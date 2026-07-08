@@ -1,0 +1,183 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-codemate}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-codemate}
+      POSTGRES_DB: ${POSTGRES_DB:-codemate}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:v1.9.5
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      APP_ENV: ${APP_ENV:-local}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-codemate}:${POSTGRES_PASSWORD:-codemate}@postgres:5432/${POSTGRES_DB:-codemate}
+      REDIS_URL: redis://redis:6379/0
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: codemate_chunks
+      FRONTEND_URL: http://localhost:3000
+      API_CORS_ORIGINS: http://localhost:3000
+      WORKSPACE_DIR: /app/workspaces
+      RQ_QUEUE_NAME: codemate-index
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-mock}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-384}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      EMBEDDING_BATCH_SIZE: ${EMBEDDING_BATCH_SIZE:-64}
+      EMBEDDING_TIMEOUT_SECONDS: ${EMBEDDING_TIMEOUT_SECONDS:-60}
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.2}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-60}
+      LLM_MAX_CONTEXT_CHARS: ${LLM_MAX_CONTEXT_CHARS:-24000}
+      LLM_MAX_OUTPUT_TOKENS: ${LLM_MAX_OUTPUT_TOKENS:-4096}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      RETRIEVAL_TOP_K: ${RETRIEVAL_TOP_K:-8}
+      RETRIEVAL_MIN_VECTOR_SCORE: ${RETRIEVAL_MIN_VECTOR_SCORE:-0.72}
+      RETRIEVAL_CANDIDATE_MULTIPLIER: ${RETRIEVAL_CANDIDATE_MULTIPLIER:-4}
+      RETRIEVAL_RERANK_ENABLED: ${RETRIEVAL_RERANK_ENABLED:-true}
+      RETRIEVAL_CONTEXT_EXPANSION_ENABLED: ${RETRIEVAL_CONTEXT_EXPANSION_ENABLED:-true}
+      RETRIEVAL_CONTEXT_WINDOW: ${RETRIEVAL_CONTEXT_WINDOW:-1}
+      RETRIEVAL_CONTEXT_MAX_EXTRA: ${RETRIEVAL_CONTEXT_MAX_EXTRA:-4}
+      MULTI_REPO_TOP_K: ${MULTI_REPO_TOP_K:-12}
+      MULTI_REPO_MAX_REPOS: ${MULTI_REPO_MAX_REPOS:-8}
+      REVIEW_CONTEXT_TOP_K: ${REVIEW_CONTEXT_TOP_K:-10}
+      REVIEW_MAX_DIFF_CHARS: ${REVIEW_MAX_DIFF_CHARS:-60000}
+      REPO_MEMORY_MAX_FILES: ${REPO_MEMORY_MAX_FILES:-12}
+      REPO_MEMORY_MAX_SYMBOLS: ${REPO_MEMORY_MAX_SYMBOLS:-30}
+      CI_WORKFLOW_FILENAME: ${CI_WORKFLOW_FILENAME:-codemate-ci.yml}
+      MAX_AGENT_ITERATIONS: 3
+      SANDBOX_WORKSPACE_DIR: ${PWD}/backend/sandbox-runs
+      SANDBOX_TIMEOUT_SECONDS: 120
+      SANDBOX_NETWORK_DISABLED: "true"
+      SANDBOX_RUNTIME: ${SANDBOX_RUNTIME:-docker}
+      SANDBOX_GVISOR_DOCKER_RUNTIME: ${SANDBOX_GVISOR_DOCKER_RUNTIME:-runsc}
+      SANDBOX_FIRECRACKER_COMMAND_TEMPLATE: ${SANDBOX_FIRECRACKER_COMMAND_TEMPLATE:-}
+      SANDBOX_NODE_IMAGE: node:20-alpine
+      SANDBOX_PYTHON_IMAGE: python:3.11-slim
+      SANDBOX_ALLOWED_COMMANDS: npm test,pnpm test,yarn test,pytest,python -m pytest
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/workspaces:/app/workspaces
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+
+  worker:
+    build:
+      context: ./backend
+    command: ["python", "-m", "app.workers.rq_worker"]
+    environment:
+      APP_ENV: ${APP_ENV:-local}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-codemate}:${POSTGRES_PASSWORD:-codemate}@postgres:5432/${POSTGRES_DB:-codemate}
+      REDIS_URL: redis://redis:6379/0
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: codemate_chunks
+      WORKSPACE_DIR: /app/workspaces
+      RQ_QUEUE_NAME: codemate-index
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-mock}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-384}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      EMBEDDING_BATCH_SIZE: ${EMBEDDING_BATCH_SIZE:-64}
+      EMBEDDING_TIMEOUT_SECONDS: ${EMBEDDING_TIMEOUT_SECONDS:-60}
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.2}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-60}
+      LLM_MAX_CONTEXT_CHARS: ${LLM_MAX_CONTEXT_CHARS:-24000}
+      LLM_MAX_OUTPUT_TOKENS: ${LLM_MAX_OUTPUT_TOKENS:-4096}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      RETRIEVAL_TOP_K: ${RETRIEVAL_TOP_K:-8}
+      RETRIEVAL_MIN_VECTOR_SCORE: ${RETRIEVAL_MIN_VECTOR_SCORE:-0.72}
+      RETRIEVAL_CANDIDATE_MULTIPLIER: ${RETRIEVAL_CANDIDATE_MULTIPLIER:-4}
+      RETRIEVAL_RERANK_ENABLED: ${RETRIEVAL_RERANK_ENABLED:-true}
+      RETRIEVAL_CONTEXT_EXPANSION_ENABLED: ${RETRIEVAL_CONTEXT_EXPANSION_ENABLED:-true}
+      RETRIEVAL_CONTEXT_WINDOW: ${RETRIEVAL_CONTEXT_WINDOW:-1}
+      RETRIEVAL_CONTEXT_MAX_EXTRA: ${RETRIEVAL_CONTEXT_MAX_EXTRA:-4}
+      MULTI_REPO_TOP_K: ${MULTI_REPO_TOP_K:-12}
+      MULTI_REPO_MAX_REPOS: ${MULTI_REPO_MAX_REPOS:-8}
+      REVIEW_CONTEXT_TOP_K: ${REVIEW_CONTEXT_TOP_K:-10}
+      REVIEW_MAX_DIFF_CHARS: ${REVIEW_MAX_DIFF_CHARS:-60000}
+      REPO_MEMORY_MAX_FILES: ${REPO_MEMORY_MAX_FILES:-12}
+      REPO_MEMORY_MAX_SYMBOLS: ${REPO_MEMORY_MAX_SYMBOLS:-30}
+      CI_WORKFLOW_FILENAME: ${CI_WORKFLOW_FILENAME:-codemate-ci.yml}
+      MAX_AGENT_ITERATIONS: 3
+      SANDBOX_WORKSPACE_DIR: ${PWD}/backend/sandbox-runs
+      SANDBOX_TIMEOUT_SECONDS: 120
+      SANDBOX_NETWORK_DISABLED: "true"
+      SANDBOX_RUNTIME: ${SANDBOX_RUNTIME:-docker}
+      SANDBOX_GVISOR_DOCKER_RUNTIME: ${SANDBOX_GVISOR_DOCKER_RUNTIME:-runsc}
+      SANDBOX_FIRECRACKER_COMMAND_TEMPLATE: ${SANDBOX_FIRECRACKER_COMMAND_TEMPLATE:-}
+      SANDBOX_NODE_IMAGE: node:20-alpine
+      SANDBOX_PYTHON_IMAGE: python:3.11-slim
+      SANDBOX_ALLOWED_COMMANDS: npm test,pnpm test,yarn test,pytest,python -m pytest
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/workspaces:/app/workspaces
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${PWD}/backend/sandbox-runs:${PWD}/backend/sandbox-runs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  qdrant_data:
