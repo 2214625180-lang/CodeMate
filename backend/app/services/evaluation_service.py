@@ -9,6 +9,7 @@ from app.core.config import settings
 from app.models.agent_run import AgentRun
 from app.models.evaluation import Evaluation
 from app.models.evaluation_dataset import EvaluationDataset
+from app.models.evaluation_dataset_snapshot import EvaluationDatasetSnapshot
 from app.models.evaluation_run import EvaluationRun
 from app.models.repository import Repository
 from app.schemas.evaluations import (
@@ -117,16 +118,100 @@ class EvaluationService:
             "comparison": comparison,
         }
 
+    def dataset_history(
+        self,
+        dataset_id: str,
+        *,
+        limit: int = 30,
+        created_after: datetime | None = None,
+        created_before: datetime | None = None,
+        status_filter: str | None = None,
+        gate_status_filter: str | None = None,
+        provider_filter: str | None = None,
+        model_filter: str | None = None,
+    ) -> dict:
+        dataset = self.db.get(EvaluationDataset, dataset_id)
+        if dataset is None:
+            raise FileNotFoundError("Evaluation dataset not found")
+
+        statement = (
+            select(EvaluationRun)
+            .options(selectinload(EvaluationRun.results))
+            .where(EvaluationRun.dataset_id == dataset.id)
+            .order_by(EvaluationRun.created_at.desc())
+        )
+        if created_after is not None:
+            statement = statement.where(EvaluationRun.created_at >= created_after)
+        if created_before is not None:
+            statement = statement.where(EvaluationRun.created_at <= created_before)
+        if status_filter is not None:
+            statement = statement.where(EvaluationRun.status == status_filter)
+
+        runs = list(self.db.execute(statement).scalars().all())
+        primary_metric = self._primary_metric_for_task(dataset.task_type)
+        history_runs = [
+            self._history_run(
+                run,
+                dataset=dataset,
+                primary_metric=primary_metric,
+            )
+            for run in runs
+        ]
+        history_runs = [
+            run
+            for run in history_runs
+            if self._history_run_matches(
+                run,
+                gate_status_filter=gate_status_filter,
+                provider_filter=provider_filter,
+                model_filter=model_filter,
+            )
+        ][:limit]
+        return {
+            "dataset": dataset,
+            "baseline_run_id": dataset.baseline_run_id,
+            "primary_metric_name": primary_metric,
+            "filters": {
+                "limit": limit,
+                "created_after": created_after.isoformat() if created_after else None,
+                "created_before": created_before.isoformat() if created_before else None,
+                "status": status_filter,
+                "gate_status": gate_status_filter,
+                "provider": provider_filter,
+                "model": model_filter,
+            },
+            "summary": self._history_summary(history_runs, primary_metric=primary_metric),
+            "gate_status_counts": dict(Counter(item["gate_status"] for item in history_runs)),
+            "runs": history_runs,
+        }
+
     def create_retrieval_run(self, request: RetrievalEvaluationRunRequest) -> EvaluationRun:
+        request_json = request.model_dump()
+        cases = [case.model_dump() for case in request.cases]
+        dataset_snapshot = self._resolve_dataset_snapshot(
+            snapshot_id=request.dataset_snapshot_id,
+            dataset_id=request.dataset_id,
+            dataset_version=request.dataset_version,
+            task_type="retrieval",
+            cases=cases,
+        )
+        dataset_snapshot_id = dataset_snapshot.id if dataset_snapshot is not None else None
+        dataset_version = request.dataset_version
+        if dataset_snapshot is not None and dataset_version is None:
+            dataset_version = dataset_snapshot.version
+        if dataset_snapshot_id:
+            request_json["dataset_snapshot_id"] = dataset_snapshot_id
+            request_json["dataset_version"] = dataset_version
         run = EvaluationRun(
             name=request.name,
             task_type="retrieval",
             status="running",
             dataset_id=request.dataset_id,
-            dataset_version=request.dataset_version,
+            dataset_version=dataset_version,
+            dataset_snapshot_id=dataset_snapshot_id,
             case_count=len(request.cases),
             config_snapshot=self._config_snapshot(),
-            request_json=request.model_dump(),
+            request_json=request_json,
         )
         self.db.add(run)
         self.db.commit()
@@ -134,15 +219,32 @@ class EvaluationService:
         return run
 
     def create_fix_run(self, request: FixEvaluationRunRequest) -> EvaluationRun:
+        request_json = request.model_dump()
+        cases = [case.model_dump() for case in request.cases]
+        dataset_snapshot = self._resolve_dataset_snapshot(
+            snapshot_id=request.dataset_snapshot_id,
+            dataset_id=request.dataset_id,
+            dataset_version=request.dataset_version,
+            task_type="fix",
+            cases=cases,
+        )
+        dataset_snapshot_id = dataset_snapshot.id if dataset_snapshot is not None else None
+        dataset_version = request.dataset_version
+        if dataset_snapshot is not None and dataset_version is None:
+            dataset_version = dataset_snapshot.version
+        if dataset_snapshot_id:
+            request_json["dataset_snapshot_id"] = dataset_snapshot_id
+            request_json["dataset_version"] = dataset_version
         run = EvaluationRun(
             name=request.name,
             task_type="fix",
             status="running",
             dataset_id=request.dataset_id,
-            dataset_version=request.dataset_version,
+            dataset_version=dataset_version,
+            dataset_snapshot_id=dataset_snapshot_id,
             case_count=len(request.cases),
             config_snapshot=self._config_snapshot(),
-            request_json=request.model_dump(),
+            request_json=request_json,
         )
         self.db.add(run)
         self.db.commit()
@@ -461,6 +563,12 @@ class EvaluationService:
             warnings.append("Runs use different benchmark datasets")
         if baseline_run.dataset_version != candidate_run.dataset_version:
             warnings.append("Runs use different benchmark dataset versions")
+        if (
+            baseline_run.dataset_snapshot_id
+            and candidate_run.dataset_snapshot_id
+            and baseline_run.dataset_snapshot_id != candidate_run.dataset_snapshot_id
+        ):
+            warnings.append("Runs use different benchmark dataset snapshots")
         if baseline_run.case_count != candidate_run.case_count:
             warnings.append("Runs have different case counts")
 
@@ -485,16 +593,43 @@ class EvaluationService:
         primary_metric_delta = self._optional_number(primary_delta.get("delta"))
         regressed_cases = int(summary.get("regressions", 0))
         compatibility_warnings = comparison["compatibility_warnings"]
+        generic_compatibility_warnings = self._gate_compatibility_warnings(
+            compatibility_warnings
+        )
+        generic_compatible = not generic_compatibility_warnings
         latency_delta = self._metric_delta(metric_deltas, "avg_latency_sec")
         tool_call_delta = self._metric_delta(metric_deltas, "avg_tool_calls")
+        baseline_context = summary.get("baseline_context") or {}
+        candidate_context = summary.get("candidate_context") or {}
+        baseline_snapshot_id = baseline_context.get("dataset_snapshot_id")
+        candidate_snapshot_id = candidate_context.get("dataset_snapshot_id")
 
         checks = [
             {
+                "name": "matching_dataset_snapshot",
+                "passed": self._dataset_snapshot_check_passed(
+                    baseline_snapshot_id=baseline_snapshot_id,
+                    candidate_snapshot_id=candidate_snapshot_id,
+                    required=policy.require_matching_dataset_snapshot,
+                ),
+                "observed": self._dataset_snapshot_observed(
+                    baseline_snapshot_id=baseline_snapshot_id,
+                    candidate_snapshot_id=candidate_snapshot_id,
+                ),
+                "threshold": "matching dataset_snapshot_id"
+                if policy.require_matching_dataset_snapshot
+                else "ignored",
+                "message": (
+                    "Baseline and candidate must use the same dataset snapshot "
+                    "unless require_matching_dataset_snapshot is disabled."
+                ),
+            },
+            {
                 "name": "compatible_runs",
-                "passed": True if policy.allow_incompatible else comparison["compatible"],
+                "passed": True if policy.allow_incompatible else generic_compatible,
                 "observed": "compatible"
-                if comparison["compatible"]
-                else "; ".join(compatibility_warnings),
+                if generic_compatible
+                else "; ".join(generic_compatibility_warnings),
                 "threshold": "compatible" if not policy.allow_incompatible else "ignored",
                 "message": "Runs must be comparable unless allow_incompatible is enabled.",
             },
@@ -543,6 +678,37 @@ class EvaluationService:
             )
 
         return checks
+
+    def _gate_compatibility_warnings(self, warnings: list[str]) -> list[str]:
+        return [
+            warning
+            for warning in warnings
+            if warning != "Runs use different benchmark dataset snapshots"
+        ]
+
+    def _dataset_snapshot_check_passed(
+        self,
+        *,
+        baseline_snapshot_id: object,
+        candidate_snapshot_id: object,
+        required: bool,
+    ) -> bool | None:
+        if not required:
+            return True
+        if not baseline_snapshot_id or not candidate_snapshot_id:
+            return None
+        return baseline_snapshot_id == candidate_snapshot_id
+
+    def _dataset_snapshot_observed(
+        self,
+        *,
+        baseline_snapshot_id: object,
+        candidate_snapshot_id: object,
+    ) -> str:
+        return (
+            f"baseline={baseline_snapshot_id or 'missing'}, "
+            f"candidate={candidate_snapshot_id or 'missing'}"
+        )
 
     def _gate_status(self, checks: list[dict]) -> str:
         if any(check["passed"] is False for check in checks):
@@ -645,6 +811,122 @@ class EvaluationService:
             "unchanged_pass": 5,
         }
         return sorted(comparisons, key=lambda item: (order[item["status"]], item["case_id"]))
+
+    def _history_run(
+        self,
+        run: EvaluationRun,
+        *,
+        dataset: EvaluationDataset,
+        primary_metric: str,
+    ) -> dict:
+        metrics = run.metrics_json or {}
+        comparison: dict | None = None
+        gate_status = "not_evaluated"
+        primary_metric_delta = None
+        regressions = None
+        improvements = None
+
+        if (
+            dataset.baseline_run_id
+            and run.id != dataset.baseline_run_id
+            and run.status == "completed"
+        ):
+            try:
+                comparison = self.compare_runs(dataset.baseline_run_id, run.id)
+                checks = self._gate_checks(comparison, self._gate_policy(dataset.gate_policy_json))
+                gate_status = self._gate_status(checks)
+                summary = comparison["summary"]
+                primary_delta = summary.get("primary_metric_delta") or {}
+                primary_metric_delta = primary_delta.get("delta")
+                regressions = summary.get("regressions")
+                improvements = summary.get("improvements")
+            except (FileNotFoundError, ValueError):
+                gate_status = "inconclusive"
+        elif dataset.baseline_run_id and run.id != dataset.baseline_run_id:
+            gate_status = "inconclusive"
+        elif dataset.baseline_run_id and run.id == dataset.baseline_run_id:
+            gate_status = "not_evaluated"
+
+        return {
+            "id": run.id,
+            "name": run.name,
+            "task_type": run.task_type,
+            "status": run.status,
+            "dataset_version": run.dataset_version,
+            "dataset_snapshot_id": run.dataset_snapshot_id,
+            "gate_status": gate_status,
+            "primary_metric_name": primary_metric,
+            "primary_metric_value": self._optional_number(metrics.get(primary_metric)),
+            "primary_metric_delta": self._optional_number(primary_metric_delta),
+            "pass_rate": self._history_pass_rate(run, metrics, primary_metric=primary_metric),
+            "case_count": run.case_count,
+            "passed_count": run.passed_count,
+            "failed_count": run.failed_count,
+            "avg_latency_sec": self._optional_number(metrics.get("avg_latency_sec")),
+            "avg_tool_calls": self._optional_number(metrics.get("avg_tool_calls")),
+            "failure_distribution": self._int_dict(metrics.get("failure_distribution")),
+            "regressions": regressions if isinstance(regressions, int) else None,
+            "improvements": improvements if isinstance(improvements, int) else None,
+            "provider": self._history_provider(run),
+            "model": self._history_model(run),
+            "created_at": run.created_at,
+            "finished_at": run.finished_at,
+        }
+
+    def _history_summary(self, history_runs: list[dict], *, primary_metric: str) -> dict:
+        completed_runs = [item for item in history_runs if item["status"] == "completed"]
+        latest = history_runs[0] if history_runs else None
+        latest_completed = completed_runs[0] if completed_runs else None
+        previous_completed = completed_runs[1] if len(completed_runs) > 1 else None
+        latest_value = latest_completed.get("primary_metric_value") if latest_completed else None
+        previous_value = (
+            previous_completed.get("primary_metric_value") if previous_completed else None
+        )
+        latest_delta = (
+            None
+            if latest_value is None or previous_value is None
+            else latest_value - previous_value
+        )
+        return {
+            "run_count": len(history_runs),
+            "completed_count": len(completed_runs),
+            "failed_run_count": sum(1 for item in history_runs if item["status"] == "failed"),
+            "running_count": sum(1 for item in history_runs if item["status"] == "running"),
+            "latest_run_id": latest.get("id") if latest else None,
+            "latest_completed_run_id": latest_completed.get("id") if latest_completed else None,
+            "latest_primary_metric": latest_value,
+            "previous_primary_metric": previous_value,
+            "latest_primary_metric_delta": latest_delta,
+            "primary_metric_name": primary_metric,
+            "avg_primary_metric": self._average(
+                item.get("primary_metric_value") for item in completed_runs
+            ),
+            "avg_latency_sec": self._average(
+                item.get("avg_latency_sec") for item in completed_runs
+            ),
+            "avg_tool_calls": self._average(
+                item.get("avg_tool_calls") for item in completed_runs
+            ),
+        }
+
+    def _history_run_matches(
+        self,
+        run: dict,
+        *,
+        gate_status_filter: str | None,
+        provider_filter: str | None,
+        model_filter: str | None,
+    ) -> bool:
+        if gate_status_filter and run["gate_status"] != gate_status_filter:
+            return False
+        if provider_filter and not self._contains_filter(run.get("provider"), provider_filter):
+            return False
+        if model_filter and not self._contains_filter(run.get("model"), model_filter):
+            return False
+        return True
+
+    def _contains_filter(self, value: str | None, filter_text: str) -> bool:
+        return filter_text.strip().lower() in str(value or "").lower()
 
     def _comparison_summary(
         self,
@@ -767,6 +1049,7 @@ class EvaluationService:
             "status": run.status,
             "dataset_id": run.dataset_id,
             "dataset_version": run.dataset_version,
+            "dataset_snapshot_id": run.dataset_snapshot_id,
             "created_at": run.created_at.isoformat(),
             "finished_at": run.finished_at.isoformat() if run.finished_at else None,
             "llm_provider": config.get("llm_provider"),
@@ -794,6 +1077,124 @@ class EvaluationService:
     def _dict_metric(self, metrics: dict, name: str) -> dict:
         value = metrics.get(name)
         return value if isinstance(value, dict) else {}
+
+    def _int_dict(self, value: object) -> dict[str, int]:
+        if not isinstance(value, dict):
+            return {}
+        return {
+            str(key): int(count)
+            for key, count in value.items()
+            if isinstance(count, int | float)
+        }
+
+    def _primary_metric_for_task(self, task_type: str) -> str:
+        return "fix_success_rate" if task_type == "fix" else "recall_at_5"
+
+    def _history_pass_rate(
+        self,
+        run: EvaluationRun,
+        metrics: dict,
+        *,
+        primary_metric: str,
+    ) -> float | int | None:
+        primary = self._optional_number(metrics.get(primary_metric))
+        if primary is not None:
+            return primary
+        if run.case_count <= 0:
+            return None
+        return run.passed_count / run.case_count
+
+    def _history_provider(self, run: EvaluationRun) -> str | None:
+        config = run.config_snapshot or {}
+        if run.task_type == "fix":
+            return config.get("llm_provider")
+        return config.get("embedding_provider")
+
+    def _history_model(self, run: EvaluationRun) -> str | None:
+        config = run.config_snapshot or {}
+        if run.task_type == "fix":
+            return config.get("llm_model")
+        return config.get("embedding_model")
+
+    def _resolve_dataset_snapshot(
+        self,
+        *,
+        snapshot_id: str | None,
+        dataset_id: str | None,
+        dataset_version: int | None,
+        task_type: str,
+        cases: list[dict],
+    ) -> EvaluationDatasetSnapshot | None:
+        if snapshot_id is None:
+            return self._matching_dataset_snapshot(
+                dataset_id=dataset_id,
+                dataset_version=dataset_version,
+                task_type=task_type,
+                cases=cases,
+            )
+
+        if dataset_id is None:
+            raise ValueError("Dataset id is required when dataset snapshot is provided")
+        snapshot = self.db.get(EvaluationDatasetSnapshot, snapshot_id)
+        if snapshot is None:
+            raise ValueError("Evaluation dataset snapshot not found")
+        if snapshot.dataset_id != dataset_id:
+            raise ValueError("Evaluation dataset snapshot does not match dataset")
+        if dataset_version is not None and snapshot.version != dataset_version:
+            raise ValueError("Evaluation dataset snapshot does not match dataset version")
+        if snapshot.task_type != task_type:
+            raise ValueError("Evaluation dataset snapshot task type does not match run task type")
+        if snapshot.cases_json != cases:
+            raise ValueError("Evaluation cases do not match dataset snapshot")
+        return snapshot
+
+    def _matching_dataset_snapshot(
+        self,
+        *,
+        dataset_id: str | None,
+        dataset_version: int | None,
+        task_type: str,
+        cases: list[dict],
+    ) -> EvaluationDatasetSnapshot | None:
+        if not dataset_id:
+            return None
+
+        dataset = self.db.get(EvaluationDataset, dataset_id)
+        if dataset is None or dataset.task_type != task_type:
+            return None
+
+        version = dataset_version or dataset.version
+        statement = select(EvaluationDatasetSnapshot).where(
+            EvaluationDatasetSnapshot.dataset_id == dataset_id,
+            EvaluationDatasetSnapshot.version == version,
+        )
+        snapshot = self.db.execute(statement).scalars().first()
+        if snapshot is None:
+            if version != dataset.version or dataset.cases_json != cases:
+                return None
+            snapshot = EvaluationDatasetSnapshot(
+                dataset_id=dataset.id,
+                name=dataset.name,
+                task_type=dataset.task_type,
+                description=dataset.description,
+                version=dataset.version,
+                baseline_run_id=dataset.baseline_run_id,
+                gate_policy_json=dataset.gate_policy_json,
+                cases_json=dataset.cases_json,
+                metadata_json=dataset.metadata_json,
+            )
+            self.db.add(snapshot)
+            self.db.flush()
+
+        if snapshot.task_type != task_type or snapshot.cases_json != cases:
+            return None
+        return snapshot
+
+    def _average(self, values: object) -> float | None:
+        numbers = [value for value in values if isinstance(value, int | float)]
+        if not numbers:
+            return None
+        return sum(numbers) / len(numbers)
 
     def _first_value(
         self,

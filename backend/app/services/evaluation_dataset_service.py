@@ -3,6 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.evaluation_dataset import EvaluationDataset
+from app.models.evaluation_dataset_snapshot import EvaluationDatasetSnapshot
 from app.models.evaluation_run import EvaluationRun
 from app.schemas.evaluations import (
     EvaluationDatasetCreate,
@@ -52,6 +53,7 @@ class EvaluationDatasetService:
                 baseline_run_id=request.baseline_run_id,
                 task_type=dataset.task_type,
             )
+        self._upsert_snapshot(dataset)
         self.db.commit()
         self.db.refresh(dataset)
         return dataset
@@ -102,12 +104,17 @@ class EvaluationDatasetService:
                 task_type=task_type,
             )
 
-        if "version" in updated_fields and request.version is not None:
+        if cases_changed and "version" in updated_fields and request.version is not None:
+            if request.version <= dataset.version:
+                raise ValueError("Dataset version must increase when cases change")
+            dataset.version = request.version
+        elif "version" in updated_fields and request.version is not None:
             dataset.version = request.version
         elif cases_changed:
             dataset.version += 1
 
         self.db.add(dataset)
+        self._upsert_snapshot(dataset)
         self.db.commit()
         self.db.refresh(dataset)
         return dataset
@@ -116,6 +123,27 @@ class EvaluationDatasetService:
         dataset = self.get_dataset(dataset_id)
         self.db.delete(dataset)
         self.db.commit()
+
+    def get_snapshot(self, snapshot_id: str) -> EvaluationDatasetSnapshot:
+        snapshot = self.db.get(EvaluationDatasetSnapshot, snapshot_id)
+        if snapshot is None:
+            raise FileNotFoundError("Evaluation dataset snapshot not found")
+        return snapshot
+
+    def list_snapshots(self, dataset_id: str) -> list[EvaluationDatasetSnapshot]:
+        self.get_dataset(dataset_id)
+        statement = (
+            select(EvaluationDatasetSnapshot)
+            .where(EvaluationDatasetSnapshot.dataset_id == dataset_id)
+            .order_by(
+                EvaluationDatasetSnapshot.version.desc(),
+                EvaluationDatasetSnapshot.created_at.desc(),
+            )
+        )
+        return list(self.db.execute(statement).scalars().all())
+
+    def current_snapshot(self, dataset: EvaluationDataset) -> EvaluationDatasetSnapshot:
+        return self._upsert_snapshot(dataset)
 
     def _validate_cases(self, task_type: str, cases: list[dict]) -> list[dict]:
         limit = 200 if task_type == "retrieval" else 50
@@ -159,3 +187,31 @@ class EvaluationDatasetService:
         if isinstance(policy, EvaluationGatePolicy):
             return policy.model_dump()
         return EvaluationGatePolicy(**(policy or {})).model_dump()
+
+    def _upsert_snapshot(self, dataset: EvaluationDataset) -> EvaluationDatasetSnapshot:
+        statement = select(EvaluationDatasetSnapshot).where(
+            EvaluationDatasetSnapshot.dataset_id == dataset.id,
+            EvaluationDatasetSnapshot.version == dataset.version,
+        )
+        snapshot = self.db.execute(statement).scalars().first()
+        if snapshot is not None:
+            if snapshot.task_type != dataset.task_type or snapshot.cases_json != dataset.cases_json:
+                raise ValueError(
+                    "Dataset version already has a different snapshot; bump dataset version"
+                )
+            return snapshot
+
+        snapshot = EvaluationDatasetSnapshot(
+            dataset_id=dataset.id,
+            name=dataset.name,
+            task_type=dataset.task_type,
+            description=dataset.description,
+            version=dataset.version,
+            baseline_run_id=dataset.baseline_run_id,
+            gate_policy_json=dataset.gate_policy_json,
+            cases_json=dataset.cases_json,
+            metadata_json=dataset.metadata_json,
+        )
+        self.db.add(snapshot)
+        self.db.flush()
+        return snapshot

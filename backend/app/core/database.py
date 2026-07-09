@@ -84,6 +84,7 @@ def ensure_phase2_columns() -> None:
     if "evaluation_runs" in table_names:
         _ensure_column("evaluation_runs", "dataset_id", "dataset_id VARCHAR(36)")
         _ensure_column("evaluation_runs", "dataset_version", "dataset_version INTEGER")
+        _ensure_column("evaluation_runs", "dataset_snapshot_id", "dataset_snapshot_id VARCHAR(36)")
         _ensure_column(
             "evaluation_runs",
             "request_json",

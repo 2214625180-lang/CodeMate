@@ -4,9 +4,15 @@ import type {
   CodeFile,
   EvaluationDataset,
   EvaluationDatasetPayload,
+  EvaluationDatasetSnapshot,
   EvaluationGateResult,
+  EvaluationHistory,
+  EvaluationHistoryFilters,
+  EvaluationRunArtifact,
   EvaluationRunCompare,
   EvaluationRun,
+  EvaluationSnapshotBackfillRequest,
+  EvaluationSnapshotBackfillResult,
   FixEvaluationRunRequest,
   FileContent,
   FixResponse,
@@ -20,7 +26,7 @@ import type {
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(apiUrl(path), {
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -40,6 +46,13 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
   const text = await response.text();
   return (text ? JSON.parse(text) : undefined) as T;
+}
+
+function apiUrl(path: string): string {
+  if (path === "/evaluations" || path.startsWith("/evaluations?") || path.startsWith("/evaluations/")) {
+    return `/api/backend${path}`;
+  }
+  return `${API_BASE_URL}${path}`;
 }
 
 export function listRepositories(): Promise<Repository[]> {
@@ -159,6 +172,17 @@ export function getEvaluationRun(evaluationRunId: string): Promise<EvaluationRun
   return request<EvaluationRun>(`/evaluations/${evaluationRunId}`);
 }
 
+export function getEvaluationRunArtifact(
+  evaluationRunId: string,
+  options?: { includeAgentSteps?: boolean; maxPayloadChars?: number }
+): Promise<EvaluationRunArtifact> {
+  const params = new URLSearchParams({
+    include_agent_steps: String(options?.includeAgentSteps ?? true),
+    max_payload_chars: String(options?.maxPayloadChars ?? 12000)
+  });
+  return request<EvaluationRunArtifact>(`/evaluations/${evaluationRunId}/artifact?${params}`);
+}
+
 export function compareEvaluationRuns(
   baselineRunId: string,
   candidateRunId: string
@@ -179,12 +203,63 @@ export function getEvaluationDataset(datasetId: string): Promise<EvaluationDatas
   return request<EvaluationDataset>(`/evaluations/datasets/${datasetId}`);
 }
 
+export function listEvaluationDatasetSnapshots(
+  datasetId: string
+): Promise<EvaluationDatasetSnapshot[]> {
+  return request<EvaluationDatasetSnapshot[]>(`/evaluations/datasets/${datasetId}/snapshots`);
+}
+
+export function getEvaluationDatasetSnapshot(
+  snapshotId: string
+): Promise<EvaluationDatasetSnapshot> {
+  return request<EvaluationDatasetSnapshot>(`/evaluations/dataset-snapshots/${snapshotId}`);
+}
+
+export function backfillEvaluationDatasetSnapshots(
+  datasetId: string,
+  payload: EvaluationSnapshotBackfillRequest
+): Promise<EvaluationSnapshotBackfillResult> {
+  return request<EvaluationSnapshotBackfillResult>(
+    `/evaluations/datasets/${datasetId}/snapshots/backfill`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }
+  );
+}
+
 export function evaluateRegressionGate(
   datasetId: string,
   candidateRunId: string
 ): Promise<EvaluationGateResult> {
   const params = new URLSearchParams({ candidate_run_id: candidateRunId });
   return request<EvaluationGateResult>(`/evaluations/datasets/${datasetId}/gate?${params}`);
+}
+
+export function getEvaluationDatasetHistory(
+  datasetId: string,
+  filters: EvaluationHistoryFilters = {}
+): Promise<EvaluationHistory> {
+  const params = new URLSearchParams({ limit: String(filters.limit ?? 30) });
+  if (filters.createdAfter) {
+    params.set("created_after", filters.createdAfter);
+  }
+  if (filters.createdBefore) {
+    params.set("created_before", filters.createdBefore);
+  }
+  if (filters.status) {
+    params.set("status", filters.status);
+  }
+  if (filters.gateStatus) {
+    params.set("gate_status", filters.gateStatus);
+  }
+  if (filters.provider?.trim()) {
+    params.set("provider", filters.provider.trim());
+  }
+  if (filters.model?.trim()) {
+    params.set("model", filters.model.trim());
+  }
+  return request<EvaluationHistory>(`/evaluations/datasets/${datasetId}/history?${params}`);
 }
 
 export function createEvaluationDataset(

@@ -20,6 +20,7 @@ class RetrievalEvaluationRunRequest(BaseModel):
     name: str | None = Field(default=None, max_length=255)
     dataset_id: str | None = Field(default=None, max_length=36)
     dataset_version: int | None = Field(default=None, ge=1)
+    dataset_snapshot_id: str | None = Field(default=None, max_length=36)
     top_k: int = Field(default=5, ge=1, le=20)
     cases: list[RetrievalEvaluationCase] = Field(..., min_length=1, max_length=200)
 
@@ -37,14 +38,41 @@ class FixEvaluationRunRequest(BaseModel):
     name: str | None = Field(default=None, max_length=255)
     dataset_id: str | None = Field(default=None, max_length=36)
     dataset_version: int | None = Field(default=None, ge=1)
+    dataset_snapshot_id: str | None = Field(default=None, max_length=36)
     require_tests_ran: bool = True
     cases: list[FixEvaluationCase] = Field(..., min_length=1, max_length=50)
+
+
+class EvaluationDatasetRunRequest(BaseModel):
+    name: str | None = Field(default=None, max_length=255)
+    top_k: int = Field(default=5, ge=1, le=20)
+    require_tests_ran: bool = True
+
+
+class EvaluationSnapshotBackfillRequest(BaseModel):
+    run_id: str | None = Field(default=None, max_length=36)
+    task_type: EvaluationTaskType | None = None
+    limit: int | None = Field(default=None, ge=1, le=1000)
+    dry_run: bool = True
+    create_missing_snapshots: bool = True
+    include_details: bool = True
+
+
+class EvaluationSnapshotBackfillResultRead(BaseModel):
+    dry_run: bool
+    scanned: int
+    backfilled: int
+    skipped: int
+    created_snapshots: int
+    status_counts: dict[str, int]
+    details: list[dict] = []
 
 
 class EvaluationGatePolicy(BaseModel):
     max_primary_metric_drop: float = Field(default=0.0, ge=0.0, le=1.0)
     max_regressed_cases: int = Field(default=0, ge=0)
     allow_incompatible: bool = False
+    require_matching_dataset_snapshot: bool = True
     max_avg_latency_increase_sec: float | None = Field(default=None, ge=0.0)
     max_avg_tool_call_increase: float | None = Field(default=None, ge=0.0)
 
@@ -87,6 +115,22 @@ class EvaluationDatasetRead(BaseModel):
     updated_at: datetime
 
 
+class EvaluationDatasetSnapshotRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    dataset_id: str
+    name: str
+    task_type: EvaluationTaskType
+    description: str | None
+    version: int
+    baseline_run_id: str | None
+    gate_policy_json: EvaluationGatePolicy
+    cases_json: list[dict]
+    metadata_json: dict
+    created_at: datetime
+
+
 class EvaluationResultRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -120,6 +164,7 @@ class EvaluationRunRead(BaseModel):
     status: EvaluationRunStatus
     dataset_id: str | None
     dataset_version: int | None
+    dataset_snapshot_id: str | None
     case_count: int
     passed_count: int
     failed_count: int
@@ -129,6 +174,111 @@ class EvaluationRunRead(BaseModel):
     created_at: datetime
     finished_at: datetime | None
     results: list[EvaluationResultRead] = []
+
+
+class EvaluationRunArtifactMetadata(BaseModel):
+    id: str
+    name: str | None
+    task_type: EvaluationTaskType
+    status: EvaluationRunStatus
+    dataset_id: str | None
+    dataset_version: int | None
+    dataset_snapshot_id: str | None
+    case_count: int
+    passed_count: int
+    failed_count: int
+    metrics_json: dict
+    config_snapshot: dict
+    request_json: dict
+    created_at: datetime
+    finished_at: datetime | None
+
+
+class EvaluationArtifactStepRead(BaseModel):
+    id: str
+    step_type: str
+    tool_name: str | None
+    input_json: dict | list | None
+    output_json: dict | list | None
+    duration_ms: int | None
+    created_at: datetime
+
+
+class EvaluationArtifactAgentTraceRead(BaseModel):
+    run_id: str
+    status: str
+    user_input: str
+    test_command: str | None
+    iterations: int
+    final_summary: str | None
+    failure_reason: str | None
+    test_result: dict | None
+    steps_by_type: dict[str, int]
+    steps: list[EvaluationArtifactStepRead]
+
+
+class EvaluationArtifactCaseRead(BaseModel):
+    evaluation_id: str
+    case_id: str | None
+    repo_id: str | None
+    task_type: EvaluationTaskType
+    prompt: str | None
+    expected_file: str | None
+    expected_lines: dict | list | None
+    status: str | None
+    passed: bool | None
+    score: float | None
+    latency_ms: int | None
+    failure_category: str | None
+    provider: str | None
+    model: str | None
+    metadata_json: dict
+    result_json: dict | list | None
+    agent_trace: EvaluationArtifactAgentTraceRead | None
+
+
+class EvaluationRunArtifactRead(BaseModel):
+    artifact_version: str
+    generated_at: datetime
+    run: EvaluationRunArtifactMetadata
+    summary: dict
+    cases: list[EvaluationArtifactCaseRead]
+
+
+class EvaluationHistoryRunRead(BaseModel):
+    id: str
+    name: str | None
+    task_type: EvaluationTaskType
+    status: EvaluationRunStatus
+    dataset_version: int | None
+    dataset_snapshot_id: str | None
+    gate_status: Literal["passed", "failed", "inconclusive", "not_evaluated"]
+    primary_metric_name: str
+    primary_metric_value: float | int | None
+    primary_metric_delta: float | int | None
+    pass_rate: float | None
+    case_count: int
+    passed_count: int
+    failed_count: int
+    avg_latency_sec: float | int | None
+    avg_tool_calls: float | int | None
+    failure_distribution: dict[str, int]
+    regressions: int | None
+    improvements: int | None
+    provider: str | None
+    model: str | None
+    created_at: datetime
+    finished_at: datetime | None
+
+
+class EvaluationHistoryRead(BaseModel):
+    dataset: EvaluationDatasetRead
+    baseline_run_id: str | None
+    primary_metric_name: str
+    filters: dict
+    summary: dict
+    gate_status_counts: dict[str, int]
+    runs: list[EvaluationHistoryRunRead]
 
 
 class EvaluationMetricDelta(BaseModel):

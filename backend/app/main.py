@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import evaluations, health, repos, runs
+from app.core.audit import evaluation_audit_middleware
 from app.core.config import settings
 from app.core.database import init_db
 
@@ -16,6 +17,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.middleware("http")(evaluation_audit_middleware)
 
     app.include_router(health.router)
     app.include_router(repos.router)
@@ -24,6 +26,7 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     def on_startup() -> None:
+        settings.validate_security_config()
         init_db()
 
     return app

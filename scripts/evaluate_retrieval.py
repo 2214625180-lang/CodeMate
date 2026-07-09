@@ -8,6 +8,10 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from evaluation_api_client import add_api_token_argument, json_headers  # noqa: E402
+
 
 TERMINAL_STATUSES = {"completed", "failed"}
 
@@ -15,6 +19,7 @@ TERMINAL_STATUSES = {"completed", "failed"}
 def main() -> int:
     parser = argparse.ArgumentParser(description="Evaluate CodeMate retrieval via Evaluation API.")
     parser.add_argument("--base-url", default="http://localhost:8000")
+    add_api_token_argument(parser)
     parser.add_argument("--cases", default="scripts/eval_cases.json")
     parser.add_argument("--name", default="CLI retrieval eval")
     parser.add_argument("--top-k", type=int, default=5)
@@ -32,12 +37,14 @@ def main() -> int:
         name=args.name,
         cases=cases,
         top_k=args.top_k,
+        api_token=args.api_token,
     )
     completed_run = wait_for_evaluation_run(
         args.base_url,
         evaluation_run["id"],
         args.poll_interval,
         args.timeout,
+        api_token=args.api_token,
     )
 
     print(json.dumps(to_report(completed_run), ensure_ascii=False, indent=2))
@@ -50,6 +57,7 @@ def create_evaluation_run(
     name: str,
     cases: list[dict[str, Any]],
     top_k: int,
+    api_token: str | None = None,
 ) -> dict[str, Any]:
     payload = {
         "name": name,
@@ -59,7 +67,7 @@ def create_evaluation_run(
     request = urllib.request.Request(
         f"{base_url}/evaluations/retrieval",
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers=json_headers(api_token, content_type=True),
         method="POST",
     )
     with urllib.request.urlopen(request, timeout=60) as response:
@@ -71,10 +79,14 @@ def wait_for_evaluation_run(
     evaluation_run_id: str,
     interval: float,
     timeout: float,
+    api_token: str | None = None,
 ) -> dict[str, Any]:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        request = urllib.request.Request(f"{base_url}/evaluations/{evaluation_run_id}")
+        request = urllib.request.Request(
+            f"{base_url}/evaluations/{evaluation_run_id}",
+            headers=json_headers(api_token),
+        )
         with urllib.request.urlopen(request, timeout=60) as response:
             evaluation_run = json.loads(response.read().decode("utf-8"))
         if evaluation_run.get("status") in TERMINAL_STATUSES:

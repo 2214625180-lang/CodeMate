@@ -5,11 +5,13 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   getEvaluationRun,
+  getEvaluationRunArtifact,
   listEvaluationDatasets,
   listEvaluationRuns,
   runFixEvaluation,
   runRetrievalEvaluation
 } from "@/lib/api";
+import { artifactFilename, renderEvaluationArtifactMarkdown } from "@/lib/evaluationArtifact";
 import type {
   EvaluationDataset,
   EvaluationRun,
@@ -179,6 +181,12 @@ export default function EvaluationsPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Link
+            href="/evaluations/history"
+            className="rounded-md border border-border px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            History
+          </Link>
           <Link
             href="/evaluations/compare"
             className="rounded-md border border-border px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
@@ -401,11 +409,14 @@ function RunSummary({ run, isLoading }: { run: EvaluationRun | null; isLoading: 
             {run.dataset_version ? ` · dataset v${run.dataset_version}` : ""}
           </p>
         </div>
-        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
-          {run.status === "running"
-            ? `${run.results.length}/${run.case_count} cases recorded`
-            : `${run.passed_count}/${run.case_count} passed`}
-        </span>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
+            {run.status === "running"
+              ? `${run.results.length}/${run.case_count} cases recorded`
+              : `${run.passed_count}/${run.case_count} passed`}
+          </span>
+          <ArtifactActions run={run} />
+        </div>
       </div>
 
       <div className="mt-5 grid gap-3 sm:grid-cols-3">
@@ -448,6 +459,60 @@ function RunSummary({ run, isLoading }: { run: EvaluationRun | null; isLoading: 
         <JsonPanel title="Config snapshot" value={run.config_snapshot} />
       </div>
     </section>
+  );
+}
+
+function ArtifactActions({ run }: { run: EvaluationRun }) {
+  const [isExporting, setIsExporting] = useState<"json" | "markdown" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function exportArtifact(format: "json" | "markdown") {
+    setIsExporting(format);
+    setError(null);
+    try {
+      const artifact = await getEvaluationRunArtifact(run.id);
+      const content =
+        format === "json"
+          ? `${JSON.stringify(artifact, null, 2)}\n`
+          : renderEvaluationArtifactMarkdown(artifact);
+      downloadText(
+        content,
+        artifactFilename(artifact, format === "json" ? "json" : "md"),
+        format === "json" ? "application/json" : "text/markdown"
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to export artifact");
+    } finally {
+      setIsExporting(null);
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center justify-end gap-2">
+      <Link
+        href={`/evaluations/artifact?runId=${encodeURIComponent(run.id)}`}
+        className="rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+      >
+        Preview
+      </Link>
+      <button
+        type="button"
+        disabled={isExporting !== null}
+        onClick={() => void exportArtifact("json")}
+        className="rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+      >
+        {isExporting === "json" ? "Exporting..." : "Export JSON"}
+      </button>
+      <button
+        type="button"
+        disabled={isExporting !== null}
+        onClick={() => void exportArtifact("markdown")}
+        className="rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+      >
+        {isExporting === "markdown" ? "Exporting..." : "Export Markdown"}
+      </button>
+      {error ? <span className="basis-full text-right text-xs text-red-600">{error}</span> : null}
+    </div>
   );
 }
 
@@ -535,6 +600,18 @@ function JsonPanel({ title, value }: { title: string; value: unknown }) {
       </pre>
     </div>
   );
+}
+
+function downloadText(content: string, filename: string, mimeType: string) {
+  const blob = new Blob([content], { type: `${mimeType};charset=utf-8` });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 function parseRetrievalCases(raw: string): RetrievalEvaluationCase[] {

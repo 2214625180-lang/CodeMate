@@ -39,6 +39,7 @@ const DEFAULT_GATE_POLICY: EvaluationGatePolicy = {
   max_primary_metric_drop: 0,
   max_regressed_cases: 0,
   allow_incompatible: false,
+  require_matching_dataset_snapshot: true,
   max_avg_latency_increase_sec: null,
   max_avg_tool_call_increase: null
 };
@@ -56,6 +57,7 @@ export default function EvaluationDatasetsPage() {
   const [maxPrimaryMetricDropPercent, setMaxPrimaryMetricDropPercent] = useState(0);
   const [maxRegressedCases, setMaxRegressedCases] = useState(0);
   const [allowIncompatible, setAllowIncompatible] = useState(false);
+  const [requireMatchingDatasetSnapshot, setRequireMatchingDatasetSnapshot] = useState(true);
   const [maxAvgLatencyIncreaseSec, setMaxAvgLatencyIncreaseSec] = useState("");
   const [maxAvgToolCallIncrease, setMaxAvgToolCallIncrease] = useState("");
   const [casesJson, setCasesJson] = useState(DEFAULT_RETRIEVAL_CASES);
@@ -214,6 +216,7 @@ export default function EvaluationDatasetsPage() {
       max_primary_metric_drop: Math.max(0, maxPrimaryMetricDropPercent) / 100,
       max_regressed_cases: Math.max(0, Math.trunc(maxRegressedCases)),
       allow_incompatible: allowIncompatible,
+      require_matching_dataset_snapshot: requireMatchingDatasetSnapshot,
       max_avg_latency_increase_sec: optionalNumber(maxAvgLatencyIncreaseSec),
       max_avg_tool_call_increase: optionalNumber(maxAvgToolCallIncrease)
     };
@@ -224,6 +227,7 @@ export default function EvaluationDatasetsPage() {
     setMaxPrimaryMetricDropPercent(Math.round(normalized.max_primary_metric_drop * 1000) / 10);
     setMaxRegressedCases(normalized.max_regressed_cases);
     setAllowIncompatible(normalized.allow_incompatible);
+    setRequireMatchingDatasetSnapshot(normalized.require_matching_dataset_snapshot);
     setMaxAvgLatencyIncreaseSec(
       normalized.max_avg_latency_increase_sec === null
         ? ""
@@ -246,12 +250,26 @@ export default function EvaluationDatasetsPage() {
             Manage reusable retrieval and fix-agent benchmark cases with versions and metadata.
           </p>
         </div>
-        <Link
-          href="/evaluations"
-          className="rounded-md border border-border px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-        >
-          Evaluation Center
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/evaluations/datasets/snapshots"
+            className="rounded-md border border-border px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Snapshots
+          </Link>
+          <Link
+            href="/evaluations/history"
+            className="rounded-md border border-border px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            History
+          </Link>
+          <Link
+            href="/evaluations"
+            className="rounded-md border border-border px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Evaluation Center
+          </Link>
+        </div>
       </div>
 
       <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -415,6 +433,15 @@ export default function EvaluationDatasetsPage() {
                 />
                 Allow incompatible comparisons
               </label>
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={requireMatchingDatasetSnapshot}
+                  onChange={(event) => setRequireMatchingDatasetSnapshot(event.target.checked)}
+                  className="h-4 w-4 rounded border-border"
+                />
+                Require matching snapshots
+              </label>
             </div>
           </div>
 
@@ -513,13 +540,27 @@ export default function EvaluationDatasetsPage() {
                     </button>
                     <div className="mt-3 flex items-center justify-between gap-2 text-xs text-slate-500">
                       <span>{new Date(dataset.updated_at).toLocaleString()}</span>
-                      <button
-                        type="button"
-                        onClick={() => void handleDelete(dataset)}
-                        className="font-medium text-red-600 hover:text-red-700"
-                      >
-                        Delete
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <Link
+                          href={`/evaluations/history?datasetId=${dataset.id}`}
+                          className="font-medium text-slate-700 hover:text-slate-950"
+                        >
+                          History
+                        </Link>
+                        <Link
+                          href={`/evaluations/datasets/snapshots?datasetId=${dataset.id}`}
+                          className="font-medium text-slate-700 hover:text-slate-950"
+                        >
+                          Snapshots
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => void handleDelete(dataset)}
+                          className="font-medium text-red-600 hover:text-red-700"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}

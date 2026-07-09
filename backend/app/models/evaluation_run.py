@@ -16,6 +16,7 @@ class EvaluationRun(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="running", index=True)
     dataset_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     dataset_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    dataset_snapshot_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     case_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     passed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     failed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

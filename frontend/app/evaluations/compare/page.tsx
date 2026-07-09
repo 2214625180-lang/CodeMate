@@ -305,6 +305,11 @@ function GateResultPanel({ result }: { result: EvaluationGateResult }) {
           value={result.policy.allow_incompatible ? "allowed" : "blocked"}
           tone="neutral"
         />
+        <MetricCard
+          label="Snapshot"
+          value={result.policy.require_matching_dataset_snapshot ? "required" : "ignored"}
+          tone="neutral"
+        />
       </div>
 
       <div className="mt-5 overflow-x-auto">
@@ -693,6 +698,7 @@ function checkStatusClass(passed: boolean | null) {
 
 function checkLabel(name: string) {
   const labels: Record<string, string> = {
+    matching_dataset_snapshot: "Matching dataset snapshot",
     compatible_runs: "Compatible runs",
     primary_metric_drop: "Primary metric drop",
     case_regressions: "Case regressions",

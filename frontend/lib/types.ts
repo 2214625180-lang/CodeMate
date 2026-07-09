@@ -152,6 +152,7 @@ export type RetrievalEvaluationRunRequest = {
   name?: string | null;
   dataset_id?: string | null;
   dataset_version?: number | null;
+  dataset_snapshot_id?: string | null;
   top_k?: number;
   cases: RetrievalEvaluationCase[];
 };
@@ -169,6 +170,7 @@ export type FixEvaluationRunRequest = {
   name?: string | null;
   dataset_id?: string | null;
   dataset_version?: number | null;
+  dataset_snapshot_id?: string | null;
   require_tests_ran?: boolean;
   cases: FixEvaluationCase[];
 };
@@ -187,6 +189,20 @@ export type EvaluationDataset = {
   updated_at: string;
 };
 
+export type EvaluationDatasetSnapshot = {
+  id: string;
+  dataset_id: string;
+  name: string;
+  task_type: "retrieval" | "fix";
+  description: string | null;
+  version: number;
+  baseline_run_id: string | null;
+  gate_policy_json: EvaluationGatePolicy;
+  cases_json: Record<string, unknown>[];
+  metadata_json: Record<string, unknown>;
+  created_at: string;
+};
+
 export type EvaluationDatasetPayload = {
   name: string;
   task_type: "retrieval" | "fix";
@@ -196,6 +212,25 @@ export type EvaluationDatasetPayload = {
   gate_policy_json?: EvaluationGatePolicy;
   cases_json: Record<string, unknown>[];
   metadata_json?: Record<string, unknown>;
+};
+
+export type EvaluationSnapshotBackfillRequest = {
+  run_id?: string | null;
+  task_type?: "retrieval" | "fix" | null;
+  limit?: number | null;
+  dry_run?: boolean;
+  create_missing_snapshots?: boolean;
+  include_details?: boolean;
+};
+
+export type EvaluationSnapshotBackfillResult = {
+  dry_run: boolean;
+  scanned: number;
+  backfilled: number;
+  skipped: number;
+  created_snapshots: number;
+  status_counts: Record<string, number>;
+  details: Record<string, unknown>[];
 };
 
 export type EvaluationResult = {
@@ -227,6 +262,7 @@ export type EvaluationRun = {
   status: "running" | "completed" | "failed";
   dataset_id: string | null;
   dataset_version: number | null;
+  dataset_snapshot_id: string | null;
   case_count: number;
   passed_count: number;
   failed_count: number;
@@ -236,6 +272,117 @@ export type EvaluationRun = {
   created_at: string;
   finished_at: string | null;
   results: EvaluationResult[];
+};
+
+export type EvaluationHistoryRun = {
+  id: string;
+  name: string | null;
+  task_type: "retrieval" | "fix";
+  status: "running" | "completed" | "failed";
+  dataset_version: number | null;
+  dataset_snapshot_id: string | null;
+  gate_status: "passed" | "failed" | "inconclusive" | "not_evaluated";
+  primary_metric_name: string;
+  primary_metric_value: number | null;
+  primary_metric_delta: number | null;
+  pass_rate: number | null;
+  case_count: number;
+  passed_count: number;
+  failed_count: number;
+  avg_latency_sec: number | null;
+  avg_tool_calls: number | null;
+  failure_distribution: Record<string, number>;
+  regressions: number | null;
+  improvements: number | null;
+  provider: string | null;
+  model: string | null;
+  created_at: string;
+  finished_at: string | null;
+};
+
+export type EvaluationHistoryFilters = {
+  limit?: number;
+  createdAfter?: string | null;
+  createdBefore?: string | null;
+  status?: "running" | "completed" | "failed" | null;
+  gateStatus?: "passed" | "failed" | "inconclusive" | "not_evaluated" | null;
+  provider?: string | null;
+  model?: string | null;
+};
+
+export type EvaluationHistory = {
+  dataset: EvaluationDataset;
+  baseline_run_id: string | null;
+  primary_metric_name: string;
+  filters: Record<string, unknown>;
+  summary: Record<string, unknown>;
+  gate_status_counts: Record<string, number>;
+  runs: EvaluationHistoryRun[];
+};
+
+export type EvaluationRunArtifact = {
+  artifact_version: string;
+  generated_at: string;
+  run: {
+    id: string;
+    name: string | null;
+    task_type: "retrieval" | "fix";
+    status: "running" | "completed" | "failed";
+    dataset_id: string | null;
+    dataset_version: number | null;
+    dataset_snapshot_id: string | null;
+    case_count: number;
+    passed_count: number;
+    failed_count: number;
+    metrics_json: Record<string, unknown>;
+    config_snapshot: Record<string, unknown>;
+    request_json: Record<string, unknown>;
+    created_at: string;
+    finished_at: string | null;
+  };
+  summary: Record<string, unknown>;
+  cases: EvaluationArtifactCase[];
+};
+
+export type EvaluationArtifactCase = {
+  evaluation_id: string;
+  case_id: string | null;
+  repo_id: string | null;
+  task_type: "retrieval" | "fix";
+  prompt: string | null;
+  expected_file: string | null;
+  expected_lines: Record<string, unknown> | unknown[] | null;
+  status: string | null;
+  passed: boolean | null;
+  score: number | null;
+  latency_ms: number | null;
+  failure_category: string | null;
+  provider: string | null;
+  model: string | null;
+  metadata_json: Record<string, unknown>;
+  result_json: Record<string, unknown> | unknown[] | null;
+  agent_trace: EvaluationArtifactAgentTrace | null;
+};
+
+export type EvaluationArtifactAgentTrace = {
+  run_id: string;
+  status: string;
+  user_input: string;
+  test_command: string | null;
+  iterations: number;
+  final_summary: string | null;
+  failure_reason: string | null;
+  test_result: Record<string, unknown> | null;
+  steps_by_type: Record<string, number>;
+  steps: {
+    id: string;
+    step_type: string;
+    tool_name: string | null;
+    input_json: Record<string, unknown> | unknown[] | null;
+    output_json: Record<string, unknown> | unknown[] | null;
+    duration_ms: number | null;
+    created_at: string;
+  }[];
 };
 
 export type EvaluationMetricDelta = {
@@ -288,6 +435,7 @@ export type EvaluationGatePolicy = {
   max_primary_metric_drop: number;
   max_regressed_cases: number;
   allow_incompatible: boolean;
+  require_matching_dataset_snapshot: boolean;
   max_avg_latency_increase_sec: number | null;
   max_avg_tool_call_increase: number | null;
 };

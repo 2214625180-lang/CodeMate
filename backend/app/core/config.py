@@ -61,6 +61,15 @@ class Settings(BaseSettings):
     sandbox_node_image: str = "node:20-alpine"
     sandbox_python_image: str = "python:3.11-slim"
     sandbox_allowed_commands: str = "npm test,pnpm test,yarn test,pytest,python -m pytest"
+    evaluation_admin_token: str | None = None
+    evaluation_ci_token: str | None = None
+    evaluation_read_token: str | None = None
+    codemate_proxy_identity_secret: str | None = None
+    codemate_proxy_identity_previous_secret: str | None = None
+    codemate_proxy_identity_ttl_seconds: int = 300
+    codemate_proxy_identity_nonce_store: str = "memory"
+    codemate_require_signed_browser_identity: bool | None = None
+    security_audit_log_path: str | None = "artifacts/security/events.jsonl"
 
     @cached_property
     def workspace_path(self) -> Path:
@@ -77,6 +86,20 @@ class Settings(BaseSettings):
             for command in self.sandbox_allowed_commands.split(",")
             if command.strip()
         }
+
+    @property
+    def signed_browser_identity_required(self) -> bool:
+        return bool(self.codemate_require_signed_browser_identity)
+
+    def validate_security_config(self) -> None:
+        if (
+            self.app_env.strip().lower() == "production"
+            and self.codemate_require_signed_browser_identity is None
+        ):
+            raise RuntimeError(
+                "CODEMATE_REQUIRE_SIGNED_BROWSER_IDENTITY must be explicitly set "
+                "when APP_ENV=production."
+            )
 
 
 settings = Settings()
