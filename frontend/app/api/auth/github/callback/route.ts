@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
 
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
-  const expectedState = cookies().get(GITHUB_OAUTH_STATE_COOKIE)?.value;
+  const expectedState = (await cookies()).get(GITHUB_OAUTH_STATE_COOKIE)?.value;
   if (!code || !state || !expectedState || state !== expectedState) {
     await auditSecurityEvent({
       eventType: "github_oauth_callback_failed",

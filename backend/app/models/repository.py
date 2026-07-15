@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, JSON, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -12,6 +12,9 @@ class Repository(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    tenant_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("mcp_tenants.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     repo_url: Mapped[str] = mapped_column(Text, nullable=False)
     local_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending", index=True)

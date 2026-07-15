@@ -1,0 +1,304 @@
+name: codemate-staging
+
+x-backend-environment: &backend-environment
+  APP_ENV: staging
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+  REDIS_URL: redis://redis:6379/0
+  QDRANT_URL: http://qdrant:6333
+  DATABASE_MIGRATIONS_ENABLED: "true"
+  RQ_WORKER_READINESS_REQUIRED: ${RQ_WORKER_READINESS_REQUIRED}
+  RQ_WORKER_HEARTBEAT_INTERVAL_SECONDS: ${RQ_WORKER_HEARTBEAT_INTERVAL_SECONDS}
+  RQ_WORKER_HEARTBEAT_TTL_SECONDS: ${RQ_WORKER_HEARTBEAT_TTL_SECONDS}
+  RQ_WORKER_HEARTBEAT_PREFIX: ${RQ_WORKER_HEARTBEAT_PREFIX}
+  MCP_ENABLED: ${MCP_ENABLED}
+  MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN}
+  MCP_ALLOWED_REPO_IDS: ${MCP_ALLOWED_REPO_IDS}
+  MCP_CLIENT_ENABLED: ${MCP_CLIENT_ENABLED}
+  MCP_CLIENT_API_TOKEN: ${MCP_CLIENT_API_TOKEN}
+  MCP_REGISTRY_ENABLED: ${MCP_REGISTRY_ENABLED}
+  MCP_REGISTRY_KMS_PROVIDER: ${MCP_REGISTRY_KMS_PROVIDER}
+  MCP_REGISTRY_KMS_KEY_ID: ${MCP_REGISTRY_KMS_KEY_ID}
+  MCP_REGISTRY_MASTER_KEY: ${MCP_REGISTRY_MASTER_KEY:-}
+  MCP_REGISTRY_PREVIOUS_MASTER_KEY: ${MCP_REGISTRY_PREVIOUS_MASTER_KEY:-}
+  MCP_REGISTRY_KEY_VERSION: ${MCP_REGISTRY_KEY_VERSION}
+  MCP_REGISTRY_ALLOWED_HOSTS: ${MCP_REGISTRY_ALLOWED_HOSTS}
+  MCP_REGISTRY_REQUIRE_HTTPS: ${MCP_REGISTRY_REQUIRE_HTTPS}
+  MCP_REGISTRY_ALLOW_PRIVATE_NETWORKS: ${MCP_REGISTRY_ALLOW_PRIVATE_NETWORKS}
+  MCP_TENANT_AUTHORIZATION_ENABLED: ${MCP_TENANT_AUTHORIZATION_ENABLED}
+  MCP_QUOTA_ENABLED: ${MCP_QUOTA_ENABLED}
+  MCP_QUOTA_BACKEND: ${MCP_QUOTA_BACKEND}
+  MCP_QUOTA_FAIL_CLOSED: ${MCP_QUOTA_FAIL_CLOSED}
+  MCP_SANDBOX_ENABLED: ${MCP_SANDBOX_ENABLED}
+  MCP_SANDBOX_BROKER_MODE: "false"
+  MCP_SANDBOX_BROKER_URL: http://mcp-sandbox:8090
+  MCP_SANDBOX_BROKER_TOKEN: ${MCP_SANDBOX_BROKER_TOKEN}
+  MCP_EGRESS_PROXY_URL: http://mcp-egress:8080
+  MCP_EGRESS_PROXY_TOKEN: ${MCP_EGRESS_PROXY_TOKEN}
+  MCP_EGRESS_ALLOWED_PORTS: ${MCP_EGRESS_ALLOWED_PORTS}
+  MCP_COMPLIANCE_ENABLED: ${MCP_COMPLIANCE_ENABLED}
+  MCP_COMPLIANCE_INTERVAL_SECONDS: ${MCP_COMPLIANCE_INTERVAL_SECONDS}
+  MCP_COMPLIANCE_STALE_SECONDS: ${MCP_COMPLIANCE_STALE_SECONDS}
+  MCP_COMPLIANCE_RETENTION_DAYS: ${MCP_COMPLIANCE_RETENTION_DAYS}
+  MCP_COMPLIANCE_REPORT_PATH: /app/artifacts/compliance/mcp-compliance-latest.json
+  SANDBOX_WORKSPACE_DIR: /app/workspaces/sandbox-runs
+  SANDBOX_EXECUTION_BROKER_URL: http://code-sandbox:8070
+  SANDBOX_EXECUTION_BROKER_TOKEN: ${SANDBOX_EXECUTION_BROKER_TOKEN}
+  EVALUATION_ADMIN_TOKEN: ${EVALUATION_ADMIN_TOKEN}
+  CODEMATE_PROXY_IDENTITY_SECRET: ${CODEMATE_PROXY_IDENTITY_SECRET}
+  CODEMATE_PROXY_IDENTITY_NONCE_STORE: ${CODEMATE_PROXY_IDENTITY_NONCE_STORE}
+  CODEMATE_REQUIRE_SIGNED_BROWSER_IDENTITY: ${CODEMATE_REQUIRE_SIGNED_BROWSER_IDENTITY}
+  SECURITY_AUDIT_LOG_PATH: ${SECURITY_AUDIT_LOG_PATH}
+  SECURITY_AUDIT_EXPORT_REQUIRED: ${SECURITY_AUDIT_EXPORT_REQUIRED}
+  SECURITY_AUDIT_FAIL_CLOSED: ${SECURITY_AUDIT_FAIL_CLOSED}
+  SECURITY_AUDIT_INGEST_TOKEN: ${SECURITY_AUDIT_INGEST_TOKEN}
+  SECURITY_AUDIT_SINKS: ${SECURITY_AUDIT_SINKS}
+  SECURITY_AUDIT_SIEM_URL: ${SECURITY_AUDIT_SIEM_URL}
+  SECURITY_AUDIT_SIEM_HMAC_SECRET: ${SECURITY_AUDIT_SIEM_HMAC_SECRET}
+  SECURITY_AUDIT_S3_BUCKET: ${SECURITY_AUDIT_S3_BUCKET}
+  SECURITY_AUDIT_S3_PREFIX: ${SECURITY_AUDIT_S3_PREFIX}
+  SECURITY_AUDIT_S3_RETENTION_DAYS: ${SECURITY_AUDIT_S3_RETENTION_DAYS}
+  SECURITY_AUDIT_OUTBOX_RETENTION_DAYS: ${SECURITY_AUDIT_OUTBOX_RETENTION_DAYS}
+  AWS_REGION: ${AWS_REGION}
+  OTEL_ENABLED: ${OTEL_ENABLED}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - staging_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - staging_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  qdrant:
+    image: qdrant/qdrant:v1.9.5
+    restart: unless-stopped
+    volumes:
+      - staging_qdrant:/qdrant/storage
+
+  migrate:
+    build: ../../backend
+    environment:
+      APP_ENV: staging
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      DATABASE_MIGRATIONS_ENABLED: "true"
+    command: ["python", "-m", "app.core.migrations", "upgrade"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  backend:
+    build: ../../backend
+    restart: unless-stopped
+    environment:
+      <<: *backend-environment
+      FRONTEND_URL: ${STAGING_FRONTEND_URL}
+      API_CORS_ORIGINS: ${STAGING_FRONTEND_URL}
+    ports:
+      - "${STAGING_API_BIND:-127.0.0.1:8000}:8000"
+    volumes:
+      - staging_artifacts:/app/artifacts
+      - staging_workspaces:/app/workspaces
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      mcp-sandbox:
+        condition: service_healthy
+    networks: [default, mcp_isolated]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/readiness', timeout=5)",
+        ]
+      interval: 10s
+      timeout: 6s
+      retries: 20
+
+  worker:
+    build: ../../backend
+    restart: unless-stopped
+    environment: *backend-environment
+    command: ["python", "-m", "app.workers.rq_worker"]
+    volumes:
+      - staging_workspaces:/app/workspaces
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      mcp-sandbox:
+        condition: service_healthy
+      code-sandbox:
+        condition: service_healthy
+    networks: [default, mcp_isolated, sandbox_control]
+
+  mcp-egress:
+    build: ../../backend
+    restart: unless-stopped
+    command: ["python", "-m", "app.mcp.egress_gateway", "--host", "0.0.0.0", "--port", "8080"]
+    environment:
+      MCP_REGISTRY_ALLOWED_HOSTS: ${MCP_REGISTRY_ALLOWED_HOSTS}
+      MCP_EGRESS_ALLOWED_PORTS: ${MCP_EGRESS_ALLOWED_PORTS}
+      MCP_EGRESS_PROXY_TOKEN: ${MCP_EGRESS_PROXY_TOKEN}
+    read_only: true
+    user: "65532:65532"
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
+    mem_limit: 128m
+    cpus: 0.25
+    networks: [default, mcp_isolated]
+
+  mcp-sandbox:
+    build: ../../backend
+    restart: unless-stopped
+    command: ["uvicorn", "app.mcp.sandbox_broker:app", "--host", "0.0.0.0", "--port", "8090", "--workers", "1"]
+    environment:
+      APP_ENV: sandbox
+      MCP_SANDBOX_ENABLED: "true"
+      MCP_SANDBOX_BROKER_MODE: "true"
+      MCP_SANDBOX_BROKER_TOKEN: ${MCP_SANDBOX_BROKER_TOKEN}
+      MCP_EGRESS_PROXY_URL: http://mcp-egress:8080
+      MCP_EGRESS_PROXY_TOKEN: ${MCP_EGRESS_PROXY_TOKEN}
+      MCP_EGRESS_ALLOWED_PORTS: ${MCP_EGRESS_ALLOWED_PORTS}
+      MCP_REGISTRY_ALLOWED_HOSTS: ${MCP_REGISTRY_ALLOWED_HOSTS}
+      MCP_REGISTRY_REQUIRE_HTTPS: "true"
+      MCP_REGISTRY_ALLOW_PRIVATE_NETWORKS: "false"
+    read_only: true
+    user: "65532:65532"
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    mem_limit: 256m
+    cpus: 0.5
+    networks: [mcp_isolated]
+    depends_on: [mcp-egress]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health', timeout=3)"]
+      interval: 5s
+      timeout: 4s
+      retries: 20
+
+  code-sandbox:
+    build: ../../backend
+    restart: unless-stopped
+    command: ["uvicorn", "app.sandbox.broker:app", "--host", "0.0.0.0", "--port", "8070", "--workers", "1"]
+    environment:
+      SANDBOX_WORKSPACE_DIR: /app/workspaces/sandbox-runs
+      SANDBOX_EXECUTION_BROKER_TOKEN: ${SANDBOX_EXECUTION_BROKER_TOKEN}
+      SANDBOX_NETWORK_DISABLED: "true"
+      SANDBOX_RUNTIME: ${SANDBOX_RUNTIME:-docker}
+      SANDBOX_EXECUTION_PLANE_ENABLED: "true"
+      SANDBOX_EXECUTION_PLANE_URL: ${SANDBOX_EXECUTION_PLANE_URL}
+      SANDBOX_EXECUTION_PLANE_BACKEND: ${SANDBOX_EXECUTION_PLANE_BACKEND:-firecracker}
+      SANDBOX_EXECUTION_PLANE_CA_PATH: /run/codemate/mtls/ca.crt
+      SANDBOX_EXECUTION_PLANE_CERT_PATH: /run/codemate/mtls/client.crt
+      SANDBOX_EXECUTION_PLANE_KEY_PATH: /run/codemate/mtls/client.key
+      SANDBOX_WORKLOAD_IDENTITY_PRIVATE_KEY_PATH: /run/codemate/identity/workload-signing.key
+      SANDBOX_WORKLOAD_IDENTITY_ISSUER: ${SANDBOX_WORKLOAD_IDENTITY_ISSUER:-codemate-staging}
+      SANDBOX_WORKLOAD_IDENTITY_SUBJECT: ${SANDBOX_WORKLOAD_IDENTITY_SUBJECT:-spiffe://codemate/staging/code-sandbox}
+      SANDBOX_WORKLOAD_IDENTITY_AUDIENCE: ${SANDBOX_WORKLOAD_IDENTITY_AUDIENCE:-codemate-sandbox-execution-plane}
+      SANDBOX_NODE_IMAGE: ${SANDBOX_NODE_IMAGE}
+      SANDBOX_PYTHON_IMAGE: ${SANDBOX_PYTHON_IMAGE}
+      SANDBOX_ALLOWED_COMMANDS: npm test,pnpm test,yarn test,pytest,python -m pytest
+    read_only: true
+    user: "65532:65532"
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
+    mem_limit: 256m
+    cpus: 0.5
+    volumes:
+      - staging_workspaces:/app/workspaces
+      - ${SANDBOX_MTLS_CA_FILE}:/run/codemate/mtls/ca.crt:ro
+      - ${SANDBOX_MTLS_CLIENT_CERT_FILE}:/run/codemate/mtls/client.crt:ro
+      - ${SANDBOX_MTLS_CLIENT_KEY_FILE}:/run/codemate/mtls/client.key:ro
+      - ${SANDBOX_WORKLOAD_PRIVATE_KEY_FILE}:/run/codemate/identity/workload-signing.key:ro
+    networks: [sandbox_control, execution_plane_egress]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8070/health', timeout=3)"]
+      interval: 5s
+      timeout: 4s
+      retries: 20
+
+  frontend:
+    build:
+      context: ../../frontend
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${STAGING_API_URL}
+    restart: unless-stopped
+    environment:
+      BACKEND_API_BASE_URL: http://backend:8000
+      NEXT_PUBLIC_API_BASE_URL: ${STAGING_API_URL}
+      CODEMATE_EVALUATION_API_TOKEN: ${EVALUATION_ADMIN_TOKEN}
+      CODEMATE_PROXY_IDENTITY_SECRET: ${CODEMATE_PROXY_IDENTITY_SECRET}
+      FRONTEND_ADMIN_PASSWORD: ${FRONTEND_ADMIN_PASSWORD:-}
+      FRONTEND_ADMIN_SESSION_SECRET: ${FRONTEND_ADMIN_SESSION_SECRET:-}
+      GITHUB_OAUTH_CLIENT_ID: ${GITHUB_OAUTH_CLIENT_ID:-}
+      GITHUB_OAUTH_CLIENT_SECRET: ${GITHUB_OAUTH_CLIENT_SECRET:-}
+      GITHUB_OAUTH_REDIRECT_URI: ${GITHUB_OAUTH_REDIRECT_URI:-}
+      CODEMATE_RBAC_ADMIN_USERS: ${CODEMATE_RBAC_ADMIN_USERS:-}
+      CODEMATE_RBAC_ADMIN_TEAMS: ${CODEMATE_RBAC_ADMIN_TEAMS:-}
+      CODEMATE_RBAC_VIEWER_USERS: ${CODEMATE_RBAC_VIEWER_USERS:-}
+      CODEMATE_RBAC_VIEWER_TEAMS: ${CODEMATE_RBAC_VIEWER_TEAMS:-}
+      CODEMATE_RBAC_VIEWER_ORGS: ${CODEMATE_RBAC_VIEWER_ORGS:-}
+      SECURITY_AUDIT_LOG_PATH: /tmp/codemate-frontend-security.jsonl
+      SECURITY_AUDIT_INGEST_URL: http://backend:8000/security-audit/events
+      SECURITY_AUDIT_INGEST_TOKEN: ${SECURITY_AUDIT_INGEST_TOKEN}
+      SECURITY_AUDIT_FAIL_CLOSED: "true"
+    ports:
+      - "${STAGING_FRONTEND_BIND:-127.0.0.1:3000}:3000"
+    volumes:
+      - staging_artifacts:/app/artifacts
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  staging_postgres:
+  staging_redis:
+  staging_qdrant:
+  staging_artifacts:
+  staging_workspaces:
+    name: codemate-staging-sandbox-workspaces
+
+networks:
+  mcp_isolated:
+    internal: true
+  sandbox_control:
+    internal: true
+  execution_plane_egress:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "false"

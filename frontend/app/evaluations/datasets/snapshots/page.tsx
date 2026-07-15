@@ -1,9 +1,10 @@
 import { SnapshotViewerClient } from "./SnapshotViewerClient";
 
-export default function EvaluationDatasetSnapshotsPage({
+export default async function EvaluationDatasetSnapshotsPage({
   searchParams
 }: {
-  searchParams: { datasetId?: string };
+  searchParams: Promise<{ datasetId?: string }>;
 }) {
-  return <SnapshotViewerClient initialDatasetId={searchParams.datasetId ?? ""} />;
+  const { datasetId = "" } = await searchParams;
+  return <SnapshotViewerClient initialDatasetId={datasetId} />;
 }

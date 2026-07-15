@@ -31,6 +31,18 @@ class BaseLLMProvider(ABC):
     ) -> str:
         raise NotImplementedError("Patch generation is not implemented for this provider.")
 
+    def plan_mcp_tools(
+        self,
+        *,
+        issue: str,
+        repo_id: str,
+        diagnosis: str,
+        tools: list[dict],
+        observations: list[dict],
+        max_calls: int,
+    ) -> list[dict]:
+        return []
+
     def reflect(
         self,
         *,

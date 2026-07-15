@@ -9,6 +9,7 @@ export type RepositoryStatus =
 export type Repository = {
   id: string;
   name: string;
+  tenant_id: string | null;
   repo_url: string;
   local_path: string | null;
   status: RepositoryStatus;
@@ -101,7 +102,395 @@ export type CIConfig = {
   applied_path: string | null;
 };
 
-export type AgentRunStatus = "pending" | "running" | "success" | "failed";
+export type AgentRunStatus =
+  | "pending"
+  | "running"
+  | "waiting_approval"
+  | "waiting_reconciliation"
+  | "success"
+  | "failed";
+
+export type MCPToolApproval = {
+  id: string;
+  run_id: string;
+  qualified_name: string;
+  server_name: string;
+  tool_name: string;
+  arguments: Record<string, unknown>;
+  arguments_hash: string;
+  policy_snapshot: string;
+  status: string;
+  decision: string | null;
+  decision_note: string | null;
+  decided_by: string | null;
+  decided_provider: string | null;
+  version: number;
+  requested_at: string;
+  expires_at: string;
+  decided_at: string | null;
+  execution_started_at: string | null;
+  execution_finished_at: string | null;
+  result: Record<string, unknown> | null;
+  error_message: string | null;
+};
+
+export type MCPToolExecution = {
+  id: string;
+  run_id: string;
+  approval_id: string | null;
+  qualified_name: string;
+  server_name: string;
+  tool_name: string;
+  arguments: Record<string, unknown>;
+  arguments_hash: string;
+  idempotency_key: string;
+  idempotency_mode: string;
+  status: string;
+  attempt_count: number;
+  recovery_count: number;
+  deduplication_hits: number;
+  retry_safe: boolean;
+  lease_owner: string | null;
+  lease_expires_at: string | null;
+  result: Record<string, unknown> | null;
+  error_message: string | null;
+  reconciliation_note: string | null;
+  reconciled_by: string | null;
+  reconciled_provider: string | null;
+  version: number;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  reconciled_at: string | null;
+  updated_at: string;
+};
+
+export type MCPServerHealth = {
+  server_name: string;
+  public_url: string | null;
+  operational_status: "healthy" | "unhealthy" | "unknown";
+  circuit_state: "closed" | "open" | "half_open";
+  manual_open: boolean;
+  consecutive_failures: number;
+  total_requests: number;
+  total_transport_successes: number;
+  total_transport_failures: number;
+  circuit_rejections: number;
+  circuit_open_count: number;
+  total_probes: number;
+  failed_probes: number;
+  last_probe_status: string;
+  last_probe_at: string | null;
+  last_success_at: string | null;
+  last_failure_at: string | null;
+  last_latency_ms: number | null;
+  last_error: string | null;
+  protocol_version: string | null;
+  server_info: Record<string, unknown> | null;
+  opened_at: string | null;
+  cooldown_until: string | null;
+  version: number;
+  updated_at: string;
+};
+
+export type MCPOperationsAlert = {
+  severity: "warning" | "critical";
+  type: string;
+  server_name: string;
+  execution_id?: string;
+  message: string;
+};
+
+export type MCPOperationsOverview = {
+  generated_at: string;
+  window_minutes: number;
+  summary: {
+    executions: number;
+    succeeded: number;
+    failed: number;
+    unknown: number;
+    executing: number;
+    deduplication_hits: number;
+    recovery_count: number;
+    pending_approvals: number;
+    open_circuits: number;
+    unhealthy_servers: number;
+    requests_per_minute: number;
+  };
+  latency_ms: { p50: number; p95: number; p99: number };
+  servers: MCPServerHealth[];
+  per_server: Array<{
+    server_name: string;
+    calls: number;
+    succeeded: number;
+    failed: number;
+    unknown: number;
+    error_rate: number;
+    latency_ms: { p50: number; p95: number; p99: number };
+  }>;
+  per_tool: Array<{
+    qualified_name: string;
+    calls: number;
+    succeeded: number;
+    failed: number;
+    unknown: number;
+    latency_ms: { p50: number; p95: number; p99: number };
+  }>;
+  alerts: MCPOperationsAlert[];
+  recent_executions: Array<{
+    id: string;
+    run_id: string;
+    approval_id: string | null;
+    qualified_name: string;
+    server_name: string;
+    tool_name: string;
+    arguments: Record<string, unknown>;
+    status: string;
+    attempt_count: number;
+    recovery_count: number;
+    deduplication_hits: number;
+    retry_safe: boolean;
+    error_message: string | null;
+    created_at: string;
+    started_at: string | null;
+    finished_at: string | null;
+    updated_at: string;
+    latency_ms: number | null;
+  }>;
+};
+
+export type SecurityAuditDeliveryStatus = {
+  event_id: string | null;
+  configured_sinks: string[];
+  counts: Record<string, number>;
+  oldest_undelivered_seconds: number;
+  deliveries: Array<{
+    id: string;
+    event_id: string;
+    sink: string;
+    payload_sha256: string;
+    status: string;
+    attempt_count: number;
+    delivered_at: string | null;
+    remote_receipt: Record<string, unknown> | null;
+    last_error: string | null;
+    created_at: string;
+  }>;
+};
+
+export type MCPComplianceReport = {
+  schema_version: number;
+  generated_at?: string;
+  environment?: string;
+  status: "compliant" | "non_compliant" | "missing";
+  report_sha256?: string;
+  controls: Array<{
+    id: string;
+    title: string;
+    status: "passed" | "failed";
+    evidence: Record<string, unknown>;
+  }>;
+};
+
+export type MCPRegistryCredential = {
+  id: string;
+  auth_type: "bearer" | "oauth2_client_credentials";
+  key_version: number;
+  encryption_provider: "aws" | "local" | "legacy" | "invalid";
+  kms_key_id: string;
+  expires_at: string | null;
+  last_refreshed_at: string | null;
+  last_error: string | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MCPRegistryServer = {
+  id: string;
+  name: string;
+  url: string;
+  enabled: boolean;
+  allowed_tools: string[];
+  tool_policies: Record<string, "auto" | "approval_required" | "deny">;
+  agent_context_tools: Array<Record<string, unknown>>;
+  idempotency_mode: "none" | "metadata";
+  validation_status: "unvalidated" | "valid" | "invalid";
+  validation_error: string | null;
+  protocol_version: string | null;
+  server_info: Record<string, unknown> | null;
+  capabilities: Record<string, unknown> | null;
+  tools_snapshot: Array<Record<string, unknown>> | null;
+  validated_at: string | null;
+  credential: MCPRegistryCredential | null;
+  version: number;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MCPRegistryRevision = {
+  id: string;
+  version: number;
+  action: string;
+  snapshot: Record<string, unknown>;
+  actor: string;
+  created_at: string;
+};
+
+export type MCPTenant = {
+  id: string;
+  slug: string;
+  name: string;
+  has_client_token: boolean;
+};
+
+export type MCPTenantMembership = {
+  id: string;
+  provider: string;
+  subject: string;
+  role: "admin" | "approver" | "member";
+};
+
+export type MCPTenantBinding = {
+  id: string;
+  server_name: string;
+  enabled: boolean;
+};
+
+export type MCPAccessGrant = {
+  id: string;
+  repo_id: string | null;
+  principal_type: "user" | "role" | "service" | "agent" | "*";
+  principal_id: string;
+  server_name: string;
+  tool_name: string;
+  permissions: Array<"discover" | "execute" | "approve">;
+  effect: "allow" | "deny";
+  expires_at: string | null;
+};
+
+export type MCPDelegatedProvider = {
+  id: string;
+  tenant_id: string;
+  server_name: string;
+  authorization_url: string;
+  token_url: string;
+  client_id: string;
+  has_client_secret: boolean;
+  scopes: string[];
+  redirect_uri: string;
+  version: number;
+};
+
+export type MCPDelegatedIdentity = {
+  id: string;
+  tenant_id: string;
+  server_name: string;
+  subject_provider: string;
+  subject: string;
+  scopes: string[];
+  expires_at: string | null;
+  revoked: boolean;
+  version: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MCPQuotaPolicy = {
+  id: string;
+  tenant_id: string;
+  repo_id: string | null;
+  principal_type: "user" | "role" | "service" | "agent" | "*";
+  principal_id: string;
+  server_name: string;
+  tool_name: string;
+  rate_limit_per_minute: number | null;
+  daily_call_limit: number | null;
+  daily_cost_limit: number | null;
+  concurrent_limit: number | null;
+  run_call_limit: number | null;
+  max_run_duration_seconds: number | null;
+  call_cost_units: number;
+  warning_threshold: number;
+  enabled: boolean;
+  frozen: boolean;
+  temporary_override: Record<string, number> | null;
+  temporary_override_expires_at: string | null;
+  reset_at: string | null;
+  version: number;
+  created_by: string;
+  updated_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MCPQuotaPolicyUsage = MCPQuotaPolicy & {
+  effective_limits: {
+    rate_limit_per_minute: number | null;
+    daily_call_limit: number | null;
+    daily_cost_limit: number | null;
+    concurrent_limit: number | null;
+    run_call_limit: number | null;
+    max_run_duration_seconds: number | null;
+    call_cost_units: number;
+  };
+  usage: {
+    minute_calls: number;
+    daily_calls: number;
+    daily_cost: number;
+    run_calls: number;
+    active_concurrency: number;
+    concurrency_retry_after: number | null;
+  };
+  utilization: number;
+};
+
+export type MCPQuotaOverview = {
+  generated_at: string;
+  window_days: number;
+  summary: {
+    calls: number;
+    cost_units: number;
+    rejections: number;
+    active_concurrency: number;
+    delegated_user_calls: number;
+  };
+  policies: MCPQuotaPolicyUsage[];
+  per_server: Array<[string, number]>;
+  per_tool: Array<[string, number]>;
+  per_principal: Array<[string, number]>;
+  alerts: Array<{
+    severity: "warning" | "critical";
+    type: string;
+    policy_id?: string;
+    message: string;
+  }>;
+  recent_rejections: Array<{
+    id: string;
+    policy_id: string | null;
+    run_id: string | null;
+    principal: string;
+    server_name: string;
+    tool_name: string;
+    reason: string;
+    retry_after_seconds: number | null;
+    created_at: string;
+  }>;
+  recent_events: Array<{
+    id: string;
+    run_id: string | null;
+    principal: string;
+    server_name: string;
+    tool_name: string;
+    cost_units: number;
+    status: string;
+    delegated: boolean;
+    created_at: string;
+    released_at: string | null;
+  }>;
+};
 
 export type AgentStep = {
   id: string;
@@ -118,6 +507,10 @@ export type AgentRun = {
   id: string;
   repo_id: string;
   task_type: string;
+  tenant_id: string | null;
+  principal_type: string;
+  principal_id: string;
+  delegated_identity_id: string | null;
   user_input: string;
   test_command: string | null;
   status: AgentRunStatus;
@@ -462,6 +855,10 @@ export type TraceEventType =
   | "plan"
   | "tool_call"
   | "tool_result"
+  | "observation"
+  | "approval_required"
+  | "approval_decision"
+  | "mcp_execution"
   | "patch"
   | "test_result"
   | "reflection"

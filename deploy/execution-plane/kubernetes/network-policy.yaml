@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sandbox-jobs-default-deny
+  namespace: codemate-sandbox
+spec:
+  podSelector:
+    matchLabels: {app: codemate-sandbox-job}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: execution-plane-ingress
+  namespace: codemate-sandbox
+spec:
+  podSelector:
+    matchLabels: {app: sandbox-execution-plane}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {codemate.io/execution-client: "true"}
+      ports:
+        - {protocol: TCP, port: 8443}

@@ -15,6 +15,14 @@ class AgentRun(Base):
         String(36), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False, index=True
     )
     task_type: Mapped[str] = mapped_column(String(32), nullable=False, default="fix")
+    tenant_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("mcp_tenants.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    principal_type: Mapped[str] = mapped_column(String(32), nullable=False, default="agent")
+    principal_id: Mapped[str] = mapped_column(String(255), nullable=False, default="codemate-agent")
+    delegated_identity_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("mcp_delegated_identities.id", ondelete="SET NULL"), nullable=True
+    )
     user_input: Mapped[str] = mapped_column(Text, nullable=False)
     test_command: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending", index=True)
@@ -38,4 +46,16 @@ class AgentRun(Base):
         back_populates="run",
         cascade="all, delete-orphan",
         order_by="AgentStep.created_at",
+    )
+    mcp_approvals = relationship(
+        "MCPToolApproval",
+        back_populates="run",
+        cascade="all, delete-orphan",
+        order_by="MCPToolApproval.requested_at",
+    )
+    mcp_executions = relationship(
+        "MCPToolExecution",
+        back_populates="run",
+        cascade="all, delete-orphan",
+        order_by="MCPToolExecution.created_at",
     )

@@ -17,13 +17,13 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export function GET() {
-  const state = adminSessionState(cookies().get(ADMIN_SESSION_COOKIE)?.value);
+export async function GET() {
+  const state = adminSessionState((await cookies()).get(ADMIN_SESSION_COOKIE)?.value);
   return NextResponse.json(state);
 }
 
 export async function POST(request: NextRequest) {
-  const state = adminSessionState(cookies().get(ADMIN_SESSION_COOKIE)?.value);
+  const state = adminSessionState((await cookies()).get(ADMIN_SESSION_COOKIE)?.value);
   if (!state.authRequired) {
     return NextResponse.json(state);
   }
@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   const state = adminSessionState(undefined);
-  const currentState = adminSessionState(cookies().get(ADMIN_SESSION_COOKIE)?.value);
+  const currentState = adminSessionState((await cookies()).get(ADMIN_SESSION_COOKIE)?.value);
   await auditSecurityEvent({
     eventType: "logout",
     outcome: "success",

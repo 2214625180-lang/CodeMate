@@ -18,7 +18,13 @@ type SessionState = {
   detail?: string;
 };
 
-export function EvaluationAdminGate({ children }: { children: ReactNode }) {
+export function EvaluationAdminGate({
+  children,
+  label = "Evaluation Center"
+}: {
+  children: ReactNode;
+  label?: string;
+}) {
   const [state, setState] = useState<SessionState | null>(null);
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -62,7 +68,7 @@ export function EvaluationAdminGate({ children }: { children: ReactNode }) {
       setPassword("");
       setState(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to unlock Evaluation Center");
+      setError(err instanceof Error ? err.message : `Failed to unlock ${label}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -76,7 +82,7 @@ export function EvaluationAdminGate({ children }: { children: ReactNode }) {
   if (!state) {
     return (
       <section className="rounded-lg border border-border bg-white p-5 text-sm text-slate-500">
-        Loading Evaluation Center...
+        Loading {label}...
       </section>
     );
   }
@@ -84,7 +90,7 @@ export function EvaluationAdminGate({ children }: { children: ReactNode }) {
   if (state.misconfigured) {
     return (
       <section className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
-        <h1 className="text-base font-semibold text-amber-950">Evaluation admin is not configured</h1>
+        <h1 className="text-base font-semibold text-amber-950">{label} admin is not configured</h1>
         <p className="mt-2">{state.detail ?? "Check the frontend authentication environment."}</p>
       </section>
     );
@@ -94,7 +100,7 @@ export function EvaluationAdminGate({ children }: { children: ReactNode }) {
     if (state.authMode === "github") {
       return (
         <section className="mx-auto max-w-md rounded-lg border border-border bg-white p-5">
-          <h1 className="text-lg font-semibold text-slate-950">Evaluation Admin</h1>
+          <h1 className="text-lg font-semibold text-slate-950">{label} Admin</h1>
           <p className="mt-2 text-sm text-slate-600">
             Sign in with GitHub to continue.
           </p>
@@ -111,7 +117,7 @@ export function EvaluationAdminGate({ children }: { children: ReactNode }) {
 
     return (
       <section className="mx-auto max-w-md rounded-lg border border-border bg-white p-5">
-        <h1 className="text-lg font-semibold text-slate-950">Evaluation Admin</h1>
+        <h1 className="text-lg font-semibold text-slate-950">{label} Admin</h1>
         <form className="mt-5 space-y-4" onSubmit={submit}>
           <div>
             <label htmlFor="evaluation-admin-password" className="text-sm font-medium text-slate-700">

@@ -1,0 +1,58 @@
+name: Staging Qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Type QUALIFY to authorize staging load and fault injection"
+        required: true
+      requests:
+        description: "MCP load-test request count"
+        required: true
+        default: "1000"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codemate-staging-qualification
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    if: inputs.confirmation == 'QUALIFY'
+    runs-on: [self-hosted, codemate-staging]
+    environment: staging
+    timeout-minutes: 60
+    env:
+      STAGING_BASE_URL: ${{ vars.STAGING_BASE_URL }}
+      STAGING_ENV_FILE: ${{ secrets.STAGING_ENV_FILE_PATH }}
+      MCP_CLIENT_API_TOKEN: ${{ secrets.MCP_CLIENT_API_TOKEN }}
+      MCP_TENANT_ID: ${{ secrets.MCP_TENANT_ID }}
+      MCP_TENANT_TOKEN: ${{ secrets.MCP_TENANT_TOKEN }}
+      MCP_LOAD_SERVER: ${{ vars.MCP_LOAD_SERVER }}
+      MCP_LOAD_TOOL: ${{ vars.MCP_LOAD_TOOL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+      - run: pip install httpx==0.28.1
+      - name: Execute staging release qualification
+        run: |
+          python scripts/run_staging_qualification.py \
+            --execute \
+            --compose-file deploy/staging/docker-compose.yml \
+            --env-file "$STAGING_ENV_FILE" \
+            --requests "${{ inputs.requests }}" \
+            --output-dir artifacts/staging-qualification/run
+      - name: Upload qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-qualification-${{ github.run_id }}
+          path: artifacts/staging-qualification/run
+          if-no-files-found: error
+          retention-days: 90

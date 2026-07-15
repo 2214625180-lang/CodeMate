@@ -17,6 +17,18 @@ CodeMate is a small but complete AI code engineering platform. It indexes TypeSc
 
 - [Demo script](docs/demo-script.md)
 - [CI evaluation gate](docs/ci-evaluation-gate.md)
+- [Read-only MCP Server](docs/mcp-server.md)
+- [CodeMate as an MCP Client](docs/mcp-client.md)
+- [Human-in-the-loop MCP approvals](docs/mcp-approval-workflow.md)
+- [Durable MCP execution ledger, idempotency, and crash recovery](docs/mcp-durable-execution.md)
+- [MCP observability, health monitoring, circuit breakers, and operations dashboard](docs/mcp-operations.md)
+- [Dynamic MCP Server Registry and Credential Broker](docs/mcp-registry.md)
+- [Tenant-scoped MCP Authorization and Delegated User Identity](docs/mcp-tenancy.md)
+- [Tenant-aware MCP Quotas, Rate Limiting and Budget Governance](docs/mcp-quotas.md)
+- [MCP Production Readiness and Evidence Pack](docs/mcp-production-readiness.md)
+- [Staging Qualification, KMS, and SIEM](docs/staging-qualification-kms-siem.md)
+- [Managed Firecracker/Kubernetes Sandbox Execution Plane](docs/managed-sandbox-execution-plane.md)
+- [MCP Control Plane Threat Model](docs/mcp-threat-model.md)
 - [Technical challenges and tradeoffs](docs/technical-challenges-tradeoffs.md)
 
 ## Architecture
@@ -376,12 +388,10 @@ The response contains a summary, changed files, structured findings, and citatio
 - `.env*`, `node_modules`, build output, and coverage folders are excluded.
 - Patches are applied with `git apply`.
 - Test commands must be listed in `SANDBOX_ALLOWED_COMMANDS`.
-- Docker tests run with CPU, memory, timeout limits, and `--network none` by default.
-- `SANDBOX_RUNTIME=docker` uses the standard Docker runtime.
-- `SANDBOX_RUNTIME=gvisor` adds `--runtime ${SANDBOX_GVISOR_DOCKER_RUNTIME}` to Docker, defaulting to `runsc`.
-- `SANDBOX_RUNTIME=firecracker` executes `SANDBOX_FIRECRACKER_COMMAND_TEMPLATE`, an external Firecracker runner command with `{workspace}`, `{image}`, `{command}`, and `{timeout}` placeholders.
-- The worker mounts `/var/run/docker.sock` so it can start sandbox containers.
-- With Docker Compose, `backend/sandbox-runs` is mounted at the same absolute path on host and worker because Docker bind mounts are resolved by the Docker daemon.
+- Neither the Worker nor the Broker owns a Docker socket; the Worker calls the internal `code-sandbox` Broker.
+- The Broker re-derives command policy and calls an independent execution node using mTLS and short-lived Ed25519 workload identity.
+- Execution nodes support a Firecracker launcher or Kubernetes/Kata Jobs and independently verify commands, images, archive digests, and assertion replay.
+- An in-process fallback remains for local development; staging and production require Broker delegation and cannot silently fall back.
 
 ## Evaluation
 
@@ -442,15 +452,11 @@ Admin users and teams can run evaluations and mutate benchmark datasets. Viewer
 users, viewer teams, and viewer org members can inspect runs, artifacts,
 history, compare reports, and gate results.
 
-Security-sensitive frontend and backend Evaluation events are written as JSONL to
-`SECURITY_AUDIT_LOG_PATH`, defaulting to `artifacts/security/events.jsonl`.
-The log records login attempts, OAuth/RBAC decisions, proxy authorization
-decisions, Evaluation API proxy calls, backend Evaluation requests with the
-resolved user role/provider, logout, and audit-log reads without storing
-passwords, OAuth codes, request bodies, or API tokens. Admin users can inspect
-recent events at `/evaluations/security`. When running frontend and backend as
-separate local processes, set `SECURITY_AUDIT_LOG_PATH` to the same absolute
-path for both processes if you want the security page to include backend events.
+Security-sensitive frontend and backend events are written locally without
+passwords, OAuth codes, request bodies, or API tokens. In staging and production,
+frontend events use the internal ingest API and join the PostgreSQL durable
+outbox; workers then deliver every event to a signed SIEM endpoint and an
+Object-Locked S3 bucket. Local JSONL remains an emergency copy.
 
 Create `scripts/eval_cases.json` from the example:
 
@@ -517,8 +523,8 @@ docker compose config
 - LangGraph bug-fix Agent
 - Incremental repository reindexing by file content hash
 - PR Review API and UI with structured findings and citations
-- Docker sandbox test validation
-- gVisor Docker runtime and Firecracker external runner sandbox options
+- Managed Firecracker/Kubernetes-Kata sandbox test execution plane
+- mTLS, request-bound workload identity, default-deny networking, and a Docker-socket-free application plane
 - Real-time Agent Timeline
 - Diff Viewer
 - Run feedback API
@@ -529,6 +535,9 @@ docker compose config
 - Frontend and backend Evaluation RBAC with GitHub OAuth, viewer/admin roles, and scoped service tokens
 - Signed proxy identity headers with HMAC verification, nonce replay protection, Redis nonce storage, and current/previous key rotation
 - Security audit logs that record frontend and backend Evaluation actions with resolved principals
+- MCP Sandbox Broker and policy-enforcing Egress Gateway with an internal-only network, DNS-rebinding protection, and exact host/port allowlists
+- Docker socket removed from the general Worker; code tests delegated to a credential-isolated Broker that revalidates workspace, command, and image policy
+- Continuous MCP compliance scans with integrity hashes, readiness gates, SIEM/S3 evidence, and Operations Dashboard controls
 
 ## Resume Wording
 
@@ -539,13 +548,15 @@ Tech stack: Next.js 14, FastAPI, LangGraph, PostgreSQL, Qdrant, Redis/RQ, Docker
 - Built an AST-based indexing pipeline for TypeScript/JavaScript/Python repositories, storing chunk metadata in PostgreSQL and embeddings in Qdrant for citation-grounded code Q&A.
 - Implemented hybrid retrieval combining keyword search, vector search, repo metadata filters, deterministic rerank, and same-file context expansion to reduce fabricated citations.
 - Designed a LangGraph repair Agent with parse, retrieve, read, diagnose, patch, test, reflect, and final nodes, including bounded retry logic.
-- Isolated generated patches in a Docker sandbox with command allowlists, timeouts, resource limits, and network-disabled test execution.
+- Delegated generated-patch validation to an independent Firecracker/Kubernetes-Kata plane with mTLS, workload identity, command allowlists, timeouts, resource limits, and default-deny networking.
 - Built an Evaluation Center with retrieval/fix datasets, snapshots, runs, artifacts, historical comparison, and CI gate integration.
 - Hardened Evaluation APIs with backend RBAC, signed proxy identity headers, replay nonce protection, scoped service tokens, key rotation, and principal-aware audit logs.
 - Built a Next.js Agent Timeline over SSE that displays plan, tool calls, patch diff, test result, reflection, and final summary without exposing hidden model reasoning.
 ```
 
 ## Further Work
+
+See [docs/mcp-sandbox-egress-compliance.md](docs/mcp-sandbox-egress-compliance.md) for deployment and operations guidance.
 
 - Learned rerank provider and broader language parser coverage
 - Managed Firecracker runner for stronger multi-tenant isolation

@@ -1,0 +1,1 @@
+CodeMate database migrations. Run `alembic upgrade head` from the backend directory.

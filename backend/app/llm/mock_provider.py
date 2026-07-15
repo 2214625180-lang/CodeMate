@@ -68,6 +68,63 @@ class MockLLMProvider(BaseLLMProvider):
 
         return ""
 
+    def plan_mcp_tools(
+        self,
+        *,
+        issue: str,
+        repo_id: str,
+        diagnosis: str,
+        tools: list[dict],
+        observations: list[dict],
+        max_calls: int,
+    ) -> list[dict]:
+        if max_calls <= 0:
+            return []
+        observed_tools = {
+            observation.get("qualified_name")
+            for observation in observations
+            if isinstance(observation, dict)
+        }
+        for tool in tools:
+            qualified_name = tool.get("qualified_name")
+            if tool.get("policy") != "auto" or qualified_name in observed_tools:
+                continue
+            name = str(tool.get("name") or "").lower()
+            if not any(hint in name for hint in ("search", "find", "lookup", "query", "get")):
+                continue
+            arguments = self._mock_mcp_arguments(
+                schema=tool.get("input_schema") or {},
+                issue=issue,
+                repo_id=repo_id,
+            )
+            if arguments is not None:
+                return [{"tool": qualified_name, "arguments": arguments}]
+        return []
+
+    def _mock_mcp_arguments(
+        self,
+        *,
+        schema: dict,
+        issue: str,
+        repo_id: str,
+    ) -> dict | None:
+        properties = schema.get("properties")
+        if not isinstance(properties, dict):
+            properties = {}
+        required = schema.get("required")
+        if not isinstance(required, list):
+            required = []
+        arguments: dict = {}
+        for name in properties:
+            lowered = name.lower()
+            if lowered in {"query", "question", "issue", "text", "message"}:
+                arguments[name] = issue
+            elif lowered in {"repo_id", "repository_id"}:
+                arguments[name] = repo_id
+        if any(name not in arguments for name in required):
+            return None
+        return arguments
+
     def reflect(
         self,
         *,

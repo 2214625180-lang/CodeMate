@@ -18,7 +18,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const state = adminSessionState(cookies().get(ADMIN_SESSION_COOKIE)?.value);
+  const state = adminSessionState((await cookies()).get(ADMIN_SESSION_COOKIE)?.value);
   const path = request.nextUrl.pathname;
   if (state.misconfigured) {
     await auditSecurityEvent({

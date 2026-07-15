@@ -1,0 +1,21 @@
+# Apply this in the namespace that runs code-sandbox; do not add it to the
+# execution-plane kustomization because Secrets cannot be mounted cross-namespace.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: code-sandbox-execution-client
+  namespace: replace-with-broker-namespace
+spec:
+  secretName: code-sandbox-execution-client
+  duration: 24h
+  renewBefore: 8h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  commonName: spiffe://codemate/code-sandbox
+  usages: [client auth]
+  issuerRef:
+    name: codemate-workload-ca
+    kind: ClusterIssuer
+    group: cert-manager.io

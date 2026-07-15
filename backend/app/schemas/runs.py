@@ -4,13 +4,22 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-AgentRunStatus = Literal["pending", "running", "success", "failed"]
+AgentRunStatus = Literal[
+    "pending",
+    "running",
+    "waiting_approval",
+    "waiting_reconciliation",
+    "success",
+    "failed",
+]
 FeedbackStatus = Literal["accepted", "rejected", "modified"]
 
 
 class FixRequest(BaseModel):
     issue: str = Field(..., min_length=1, max_length=20000)
     test_command: str | None = Field(default=None, max_length=255)
+    delegated_identity_id: str | None = Field(default=None, max_length=36)
+    delegation_token: str | None = Field(default=None, max_length=512)
 
 
 class FixResponse(BaseModel):
@@ -48,6 +57,10 @@ class AgentRunRead(BaseModel):
     id: str
     repo_id: str
     task_type: str
+    tenant_id: str | None
+    principal_type: str
+    principal_id: str
+    delegated_identity_id: str | None
     user_input: str
     test_command: str | None
     status: AgentRunStatus

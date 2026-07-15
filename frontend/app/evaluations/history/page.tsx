@@ -1,9 +1,10 @@
 import { HistoryDashboardClient } from "./HistoryDashboardClient";
 
-export default function EvaluationHistoryPage({
+export default async function EvaluationHistoryPage({
   searchParams
 }: {
-  searchParams: { datasetId?: string };
+  searchParams: Promise<{ datasetId?: string }>;
 }) {
-  return <HistoryDashboardClient initialDatasetId={searchParams.datasetId ?? ""} />;
+  const { datasetId = "" } = await searchParams;
+  return <HistoryDashboardClient initialDatasetId={datasetId} />;
 }

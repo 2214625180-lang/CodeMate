@@ -1,9 +1,10 @@
 import { ArtifactPreviewClient } from "./ArtifactPreviewClient";
 
-export default function EvaluationArtifactPage({
+export default async function EvaluationArtifactPage({
   searchParams
 }: {
-  searchParams: { runId?: string };
+  searchParams: Promise<{ runId?: string }>;
 }) {
-  return <ArtifactPreviewClient runId={searchParams.runId ?? ""} />;
+  const { runId = "" } = await searchParams;
+  return <ArtifactPreviewClient runId={runId} />;
 }

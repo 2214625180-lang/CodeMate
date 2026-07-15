@@ -59,6 +59,7 @@ def test_backend_audit_logs_resolved_principal(monkeypatch, tmp_path, caplog):
     assert any(
         json.loads(log_record.message)["eventType"] == "backend_evaluation_request"
         for log_record in caplog.records
+        if log_record.name == "codemate.audit"
     )
 
 
@@ -115,6 +116,139 @@ def test_backend_audit_logs_unauthenticated_attempt(monkeypatch, tmp_path):
     assert record["metadata"]["authMethod"] is None
 
 
+def test_backend_audit_uses_mcp_approval_event_type(monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "evaluation_admin_token", "secret-token")
+    audit_path = tmp_path / "events.jsonl"
+    monkeypatch.setattr(settings, "security_audit_log_path", str(audit_path))
+    client = TestClient(create_audited_app())
+
+    response = client.post(
+        "/mcp-approvals/ping",
+        headers={"Authorization": "Bearer secret-token"},
+    )
+
+    assert response.status_code == 200
+    record = read_single_audit_record(audit_path)
+    assert record["eventType"] == "backend_mcp_approval_request"
+    assert record["path"] == "/mcp-approvals/ping"
+
+
+def test_backend_audit_uses_mcp_execution_event_type(monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "evaluation_admin_token", "secret-token")
+    audit_path = tmp_path / "events.jsonl"
+    monkeypatch.setattr(settings, "security_audit_log_path", str(audit_path))
+    client = TestClient(create_audited_app())
+
+    response = client.post(
+        "/mcp-executions/ping",
+        headers={"Authorization": "Bearer secret-token"},
+    )
+
+    assert response.status_code == 200
+    record = read_single_audit_record(audit_path)
+    assert record["eventType"] == "backend_mcp_execution_request"
+
+
+def test_backend_audit_uses_mcp_operations_event_type(monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "evaluation_admin_token", "secret-token")
+    audit_path = tmp_path / "events.jsonl"
+    monkeypatch.setattr(settings, "security_audit_log_path", str(audit_path))
+    client = TestClient(create_audited_app())
+
+    response = client.post(
+        "/mcp-operations/ping",
+        headers={"Authorization": "Bearer secret-token"},
+    )
+
+    assert response.status_code == 200
+    record = read_single_audit_record(audit_path)
+    assert record["eventType"] == "backend_mcp_operations_request"
+
+
+def test_backend_audit_uses_mcp_registry_event_type(monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "evaluation_admin_token", "secret-token")
+    audit_path = tmp_path / "events.jsonl"
+    monkeypatch.setattr(settings, "security_audit_log_path", str(audit_path))
+    client = TestClient(create_audited_app())
+
+    response = client.post(
+        "/mcp-registry/ping",
+        headers={"Authorization": "Bearer secret-token"},
+    )
+
+    assert response.status_code == 200
+    record = read_single_audit_record(audit_path)
+    assert record["eventType"] == "backend_mcp_registry_request"
+
+
+def test_backend_audit_uses_mcp_quota_event_type(monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "evaluation_admin_token", "secret-token")
+    audit_path = tmp_path / "events.jsonl"
+    monkeypatch.setattr(settings, "security_audit_log_path", str(audit_path))
+    client = TestClient(create_audited_app())
+
+    response = client.post(
+        "/mcp-quotas/ping",
+        headers={"Authorization": "Bearer secret-token"},
+    )
+
+    assert response.status_code == 200
+    assert read_single_audit_record(audit_path)["eventType"] == "backend_mcp_quota_request"
+
+
+def test_fail_closed_audit_persists_intent_before_handler(monkeypatch, tmp_path):
+    called = []
+    captured = []
+    monkeypatch.setattr(settings, "security_audit_log_path", str(tmp_path / "intent.jsonl"))
+    monkeypatch.setattr(settings, "security_audit_sinks", "http,s3")
+    monkeypatch.setattr(settings, "security_audit_fail_closed", True)
+    monkeypatch.setattr(
+        "app.core.audit.enqueue_remote_security_audit_record",
+        lambda record: captured.append(record),
+    )
+    app = FastAPI()
+    app.middleware("http")(evaluation_audit_middleware)
+
+    @app.post("/mcp-registry/change")
+    def change():
+        called.append(True)
+        return {"ok": True}
+
+    response = TestClient(app).post("/mcp-registry/change")
+
+    assert response.status_code == 200
+    assert called == [True]
+    assert [item["eventType"] for item in captured] == [
+        "backend_security_request_intent",
+        "backend_mcp_registry_request",
+    ]
+    assert captured[1]["metadata"]["intentId"] == captured[0]["id"]
+
+
+def test_fail_closed_audit_does_not_execute_handler_when_intent_fails(monkeypatch):
+    called = []
+    monkeypatch.setattr(settings, "security_audit_log_path", None)
+    monkeypatch.setattr(settings, "security_audit_sinks", "http,s3")
+    monkeypatch.setattr(settings, "security_audit_fail_closed", True)
+
+    def fail(_record):
+        raise RuntimeError("outbox unavailable")
+
+    monkeypatch.setattr("app.core.audit.enqueue_remote_security_audit_record", fail)
+    app = FastAPI()
+    app.middleware("http")(evaluation_audit_middleware)
+
+    @app.post("/mcp-registry/change")
+    def change():
+        called.append(True)
+        return {"ok": True}
+
+    response = TestClient(app, raise_server_exceptions=False).post("/mcp-registry/change")
+
+    assert response.status_code == 500
+    assert called == []
+
+
 def create_audited_app() -> FastAPI:
     app = FastAPI()
     app.middleware("http")(evaluation_audit_middleware)
@@ -127,6 +261,36 @@ def create_audited_app() -> FastAPI:
 
     @app.post("/evaluations/admin")
     def admin(
+        principal: EvaluationPrincipal = Depends(require_evaluation_admin),
+    ):
+        return {"role": principal.role}
+
+    @app.post("/mcp-approvals/ping")
+    def approval_admin(
+        principal: EvaluationPrincipal = Depends(require_evaluation_admin),
+    ):
+        return {"role": principal.role}
+
+    @app.post("/mcp-executions/ping")
+    def execution_admin(
+        principal: EvaluationPrincipal = Depends(require_evaluation_admin),
+    ):
+        return {"role": principal.role}
+
+    @app.post("/mcp-operations/ping")
+    def operations_admin(
+        principal: EvaluationPrincipal = Depends(require_evaluation_admin),
+    ):
+        return {"role": principal.role}
+
+    @app.post("/mcp-registry/ping")
+    def registry_admin(
+        principal: EvaluationPrincipal = Depends(require_evaluation_admin),
+    ):
+        return {"role": principal.role}
+
+    @app.post("/mcp-quotas/ping")
+    def quota_admin(
         principal: EvaluationPrincipal = Depends(require_evaluation_admin),
     ):
         return {"role": principal.role}

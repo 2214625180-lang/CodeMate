@@ -1,0 +1,8 @@
+resources:
+  - namespace.yaml
+  - rbac.yaml
+  - pvc.yaml
+  - deployment.yaml
+  - network-policy.yaml
+  - availability.yaml
+  - certificate.yaml

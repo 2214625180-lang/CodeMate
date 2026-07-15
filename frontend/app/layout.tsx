@@ -37,6 +37,18 @@ export default function RootLayout({
                 <Link href="/evaluations/datasets" className="hover:text-slate-950">
                   Benchmarks
                 </Link>
+                <Link href="/mcp-operations" className="hover:text-slate-950">
+                  MCP Ops
+                </Link>
+                <Link href="/mcp-registry" className="hover:text-slate-950">
+                  MCP Registry
+                </Link>
+                <Link href="/mcp-tenancy" className="hover:text-slate-950">
+                  MCP Tenancy
+                </Link>
+                <Link href="/mcp-quotas" className="hover:text-slate-950">
+                  MCP Quotas
+                </Link>
               </nav>
             </div>
           </header>

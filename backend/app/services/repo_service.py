@@ -26,7 +26,14 @@ class RepoService:
             raise ValueError("Only http(s), ssh, and git@ Git URLs are supported.")
 
         name = self._derive_name(normalized_url)
-        return create_repository(self.db, name=name, repo_url=normalized_url)
+        repository = create_repository(self.db, name=name, repo_url=normalized_url)
+        from app.services.mcp_tenancy_service import MCPTenancyService
+
+        repository.tenant_id = MCPTenancyService(self.db).default_tenant().id
+        self.db.add(repository)
+        self.db.commit()
+        self.db.refresh(repository)
+        return repository
 
     def list(self):
         return list_repositories(self.db)

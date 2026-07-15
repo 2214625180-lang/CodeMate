@@ -17,6 +17,19 @@ CodeMate 是一个小而完整的 AI 代码工程平台。它可以把 TypeScrip
 
 - [Demo 脚本](docs/demo-script.md)
 - [CI Evaluation Gate](docs/ci-evaluation-gate.md)
+- [只读 MCP Server](docs/mcp-server.md)
+- [CodeMate 作为 MCP Client](docs/mcp-client.md)
+- [MCP 人机审批与可恢复执行](docs/mcp-approval-workflow.md)
+- [MCP 持久化执行账本、幂等与崩溃恢复](docs/mcp-durable-execution.md)
+- [MCP 可观测性、健康监控、熔断与运维 Dashboard](docs/mcp-operations.md)
+- [动态 MCP Server Registry 与 Credential Broker](docs/mcp-registry.md)
+- [租户级 MCP 授权与委托用户身份](docs/mcp-tenancy.md)
+- [租户级 MCP 配额、限流与预算治理](docs/mcp-quotas.md)
+- [MCP 生产就绪与证据包](docs/mcp-production-readiness.md)
+- [Staging Qualification、KMS 与 SIEM](docs/staging-qualification-kms-siem.md)
+- [托管 Firecracker/Kubernetes 沙箱执行平面](docs/managed-sandbox-execution-plane.md)
+- [Sandbox HA Staging Qualification 与证据包](docs/sandbox-ha-qualification.md)
+- [MCP 威胁模型](docs/mcp-threat-model.md)
 - [技术难点与取舍](docs/technical-challenges-tradeoffs.md)
 
 ## 系统架构
@@ -376,12 +389,10 @@ curl -X POST http://localhost:8000/repos/<repo_id>/review \
 - `.env*`、`node_modules`、build output 和 coverage 目录会被排除。
 - 补丁通过 `git apply` 应用。
 - 测试命令必须出现在 `SANDBOX_ALLOWED_COMMANDS` 中。
-- Docker 测试默认设置 CPU、内存、timeout 限制，并使用 `--network none`。
-- `SANDBOX_RUNTIME=docker` 使用标准 Docker runtime。
-- `SANDBOX_RUNTIME=gvisor` 会给 Docker 增加 `--runtime ${SANDBOX_GVISOR_DOCKER_RUNTIME}`，默认值是 `runsc`。
-- `SANDBOX_RUNTIME=firecracker` 会执行 `SANDBOX_FIRECRACKER_COMMAND_TEMPLATE`，通过外部 Firecracker runner 处理 `{workspace}`、`{image}`、`{command}` 和 `{timeout}`。
-- worker 挂载 `/var/run/docker.sock`，用于启动沙箱容器。
-- Docker Compose 下，`backend/sandbox-runs` 在 host 和 worker 中保持相同绝对路径，因为 Docker bind mount 由 Docker daemon 解析。
+- Worker 和 Broker 都不持有 Docker Socket；Worker 经内部认证调用 `code-sandbox` Broker。
+- Broker 重新推导命令策略并通过 mTLS、短时 Ed25519 workload identity 调用独立执行节点。
+- 执行节点支持 Firecracker launcher 或 Kubernetes/Kata Job，并再次验证命令、镜像、归档摘要和身份重放。
+- 本地无远程执行平面时仍保留进程内开发 fallback；staging/production 配置校验要求使用 Broker，不能静默回退。
 
 ## Evaluation
 
@@ -421,7 +432,7 @@ CODEMATE_RBAC_VIEWER_ORGS=my-org
 
 Admin 用户和团队可以运行 evaluations 并变更 benchmark datasets。Viewer 用户、viewer teams 和 viewer org 成员可以查看 runs、artifacts、history、compare reports 和 gate results。
 
-安全敏感的前后端 Evaluation 事件会以 JSONL 写入 `SECURITY_AUDIT_LOG_PATH`，默认路径是 `artifacts/security/events.jsonl`。日志会记录 login attempts、OAuth/RBAC decisions、proxy authorization decisions、Evaluation API proxy calls、带解析后用户 role/provider 的后端 Evaluation requests、logout 和 audit-log reads；不会记录 password、OAuth code、request body 或 API token。Admin 用户可以在 `/evaluations/security` 查看最近事件。本地前后端分开运行时，如果希望安全页面包含后端事件，需要把两边的 `SECURITY_AUDIT_LOG_PATH` 设置成同一个绝对路径。
+安全敏感的前后端 Evaluation 事件会以 JSONL 写入 `SECURITY_AUDIT_LOG_PATH`，默认路径是 `artifacts/security/events.jsonl`。日志不会记录 password、OAuth code、request body 或 API token。本地可在 `/evaluations/security` 查看最近事件；staging/production 中，前端事件通过内部 ingest API 汇入 PostgreSQL durable outbox，再同时投递到签名 SIEM 和启用 Object Lock 的 S3，本地 JSONL 仅作为应急副本。
 
 从示例创建 `scripts/eval_cases.json`：
 
@@ -488,8 +499,8 @@ docker compose config
 - LangGraph bug-fix Agent
 - 基于文件内容 hash 的增量 reindex
 - PR Review API 和 UI，包含结构化 findings 和 citations
-- Docker sandbox 测试验证
-- gVisor Docker runtime 和 Firecracker external runner 沙箱选项
+- 托管 Firecracker/Kubernetes-Kata 沙箱测试执行平面
+- mTLS、请求绑定 workload identity、默认拒绝网络与无 Docker Socket 应用平面
 - Real-time Agent Timeline
 - Diff Viewer
 - Run feedback API
@@ -500,6 +511,9 @@ docker compose config
 - 前后端 Evaluation RBAC，支持 GitHub OAuth、viewer/admin roles 和 scoped service tokens
 - Signed proxy identity headers，支持 HMAC verification、nonce replay protection、Redis nonce storage、current/previous key rotation
 - 记录前后端 Evaluation 行为和 resolved principal 的安全审计日志
+- MCP Sandbox Broker + policy-enforcing Egress Gateway，提供 internal-only 网络隔离、DNS rebinding 防护和精确 host/port allowlist
+- 通用 Worker 与 Broker 均移除 Docker Socket；代码测试经无业务凭据的 Broker 委托给独立 Firecracker/Kubernetes 执行节点，并双重校验 workspace、命令和镜像策略
+- 持续 MCP 合规扫描、完整性哈希、readiness gate、SIEM/S3 审计证据和 Operations Dashboard
 
 ## 简历表述
 
@@ -510,7 +524,7 @@ CodeMate: 代码库问答与自动修复 Agent
 - 设计并实现 TypeScript/JavaScript/Python 仓库 AST 语义索引流水线，将 chunk 元数据存入 PostgreSQL，将向量存入 Qdrant，用于带文件/行号引用的代码问答。
 - 实现关键词检索、向量检索、repo metadata filter、确定性 rerank 和 same-file context expansion 结合的 hybrid retrieval，降低模型伪造 citation 的概率。
 - 基于 LangGraph 设计代码修复 Agent，包含 parse、retrieve、read、diagnose、patch、test、reflect、final 节点，并实现 bounded retry。
-- 将 Agent 生成补丁放入 Docker 沙箱验证，支持命令白名单、timeout、资源限制和禁网测试执行。
+- 将 Agent 生成补丁委托给独立 Firecracker/Kubernetes-Kata 执行平面，使用 mTLS、工作负载身份、命令白名单、timeout、资源限制和禁网策略完成验证。
 - 建设 Evaluation Center，支持 retrieval/fix 数据集、快照、运行产物、历史对比和 CI gate 集成。
 - 加固 Evaluation API，支持后端 RBAC、signed proxy identity header、replay nonce protection、scoped service token、key rotation 和 principal-aware audit log。
 - 基于 SSE 构建 Next.js Agent Timeline，展示 plan、tool calls、patch diff、test result、reflection 和 final summary，不暴露隐藏模型推理。
@@ -518,6 +532,8 @@ CodeMate: 代码库问答与自动修复 Agent
 
 ## 后续工作
 
+MCP 隔离、出站策略与持续合规部署说明见 [docs/mcp-sandbox-egress-compliance.md](docs/mcp-sandbox-egress-compliance.md)。
+
 - 接入 learned rerank provider，并扩展更多语言 parser
-- 提供托管 Firecracker runner，用于更强多租户隔离
+- 在真实 staging 集群完成 Firecracker/Kata 性能基线、节点故障与证书轮换演练
 - 增加定时 evaluation regression report

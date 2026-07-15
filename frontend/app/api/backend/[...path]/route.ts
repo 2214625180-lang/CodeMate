@@ -33,9 +33,9 @@ const HOP_BY_HOP_HEADERS = new Set([
 ]);
 
 type RouteContext = {
-  params: {
+  params: Promise<{
     path?: string[];
-  };
+  }>;
 };
 
 export async function GET(request: NextRequest, context: RouteContext) {
@@ -59,10 +59,18 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
 }
 
 async function proxyBackend(request: NextRequest, context: RouteContext) {
-  const backendPath = `/${(context.params.path ?? []).map(encodeURIComponent).join("/")}`;
-  const evaluationPath = isEvaluationPath(backendPath);
+  const { path = [] } = await context.params;
+  const backendPath = `/${path.map(encodeURIComponent).join("/")}`;
+  const evaluationPath =
+    isEvaluationPath(backendPath) ||
+    isMCPApprovalPath(backendPath) ||
+    isMCPExecutionPath(backendPath) ||
+    isMCPOperationsPath(backendPath) ||
+    isMCPRegistryPath(backendPath) ||
+    isMCPTenancyPath(backendPath) ||
+    isMCPQuotaPath(backendPath);
   const evaluationState = evaluationPath
-    ? adminSessionState(cookies().get(ADMIN_SESSION_COOKIE)?.value)
+    ? adminSessionState((await cookies()).get(ADMIN_SESSION_COOKIE)?.value)
     : null;
 
   if (evaluationState) {
@@ -98,7 +106,11 @@ async function proxyBackend(request: NextRequest, context: RouteContext) {
       });
       return NextResponse.json({ detail: "Evaluation session required" }, { status: 401 });
     }
-    if (isEvaluationMutation(request.method) && !canMutateEvaluation(state)) {
+    if (
+      isEvaluationMutation(request.method) &&
+      !isDelegatedAuthorizationStart(backendPath) &&
+      !canMutateEvaluation(state)
+    ) {
       await auditSecurityEvent({
         eventType: "evaluation_proxy_forbidden",
         outcome: "blocked",
@@ -192,6 +204,34 @@ async function proxyBackend(request: NextRequest, context: RouteContext) {
 
 function isEvaluationPath(path: string): boolean {
   return path === "/evaluations" || path.startsWith("/evaluations/");
+}
+
+function isMCPApprovalPath(path: string): boolean {
+  return path === "/mcp-approvals" || path.startsWith("/mcp-approvals/");
+}
+
+function isMCPExecutionPath(path: string): boolean {
+  return path === "/mcp-executions" || path.startsWith("/mcp-executions/");
+}
+
+function isMCPOperationsPath(path: string): boolean {
+  return path === "/mcp-operations" || path.startsWith("/mcp-operations/");
+}
+
+function isMCPRegistryPath(path: string): boolean {
+  return path === "/mcp-registry" || path.startsWith("/mcp-registry/");
+}
+
+function isMCPTenancyPath(path: string): boolean {
+  return path === "/mcp-tenancy" || path.startsWith("/mcp-tenancy/");
+}
+
+function isMCPQuotaPath(path: string): boolean {
+  return path === "/mcp-quotas" || path.startsWith("/mcp-quotas/");
+}
+
+function isDelegatedAuthorizationStart(path: string): boolean {
+  return /^\/mcp-tenancy\/oauth\/providers\/[^/]+\/authorize$/.test(path);
 }
 
 function isEvaluationMutation(method: string): boolean {

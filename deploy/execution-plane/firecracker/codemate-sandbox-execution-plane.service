@@ -1,0 +1,23 @@
+[Unit]
+Description=CodeMate managed Firecracker sandbox execution plane
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=codemate-sandbox
+Group=codemate-sandbox
+EnvironmentFile=/etc/codemate/sandbox-execution-plane.env
+WorkingDirectory=/opt/codemate/backend
+ExecStart=/opt/codemate/venv/bin/uvicorn app.sandbox.execution_plane:app --host 0.0.0.0 --port 8443 --workers 1 --ssl-certfile /etc/codemate/pki/server.crt --ssl-keyfile /etc/codemate/pki/server.key --ssl-ca-certs /etc/codemate/pki/client-ca.crt --ssl-cert-reqs 2
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/codemate/workspaces
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

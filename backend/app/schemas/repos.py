@@ -16,6 +16,7 @@ class RepositoryRead(BaseModel):
 
     id: str
     name: str
+    tenant_id: str | None
     repo_url: str
     local_path: str | None
     status: RepositoryStatus

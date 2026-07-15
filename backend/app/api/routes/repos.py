@@ -233,11 +233,16 @@ def create_fix_run(repo_id: str, payload: FixRequest, db: Session = Depends(get_
             detail="Repository must be indexed before running the fix agent",
         )
 
-    run = AgentService(db).create_fix_run(
-        repo_id=repo_id,
-        issue=payload.issue,
-        test_command=payload.test_command,
-    )
+    try:
+        run = AgentService(db).create_fix_run(
+            repo_id=repo_id,
+            issue=payload.issue,
+            test_command=payload.test_command,
+            delegated_identity_id=payload.delegated_identity_id,
+            delegation_token=payload.delegation_token,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     try:
         enqueue_agent_run(run.id)

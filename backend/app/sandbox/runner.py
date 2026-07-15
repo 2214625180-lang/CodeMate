@@ -1,11 +1,12 @@
 import fnmatch
 import json
-import shlex
 import shutil
 import subprocess
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+
+import httpx
 
 from app.core.config import settings
 
@@ -182,6 +183,14 @@ class SandboxService:
         )
         image = self._image_for_command(command)
         if runtime == "firecracker":
+            if settings.sandbox_execution_broker_url:
+                return self._run_remote_docker_tests(
+                    workspace=workspace,
+                    command=command,
+                    shell_command=test_shell_command,
+                    image=image,
+                    runtime=runtime,
+                )
             return self._run_firecracker_tests(
                 workspace=workspace,
                 command=command,
@@ -206,6 +215,14 @@ class SandboxService:
         image: str,
         runtime: str,
     ) -> TestResult:
+        if settings.sandbox_execution_broker_url:
+            return self._run_remote_docker_tests(
+                workspace=workspace,
+                command=command,
+                shell_command=shell_command,
+                image=image,
+                runtime=runtime,
+            )
         container_name = f"codemate-{uuid.uuid4().hex[:12]}"
         docker_command = [
             "docker",
@@ -258,6 +275,59 @@ class SandboxService:
                 runtime=runtime,
             )
 
+    def _run_remote_docker_tests(
+        self,
+        *,
+        workspace: Path,
+        command: str,
+        shell_command: str,
+        image: str,
+        runtime: str,
+    ) -> TestResult:
+        broker_url = (settings.sandbox_execution_broker_url or "").rstrip("/")
+        token = (settings.sandbox_execution_broker_token or "").strip()
+        root = Path(settings.sandbox_workspace_dir).resolve()
+        try:
+            relative_workspace = workspace.resolve().relative_to(root).as_posix()
+        except ValueError:
+            return TestResult(
+                passed=False,
+                exit_code=126,
+                stdout="",
+                stderr="Sandbox workspace is outside the broker volume",
+                command=command,
+                tests_ran=False,
+                runtime=runtime,
+            )
+        try:
+            response = httpx.post(
+                f"{broker_url}/v1/tests",
+                headers={"Authorization": f"Bearer {token}"},
+                json={
+                    "workspace": relative_workspace,
+                    "command": command,
+                    "shell_command": shell_command,
+                    "image": image,
+                    "runtime": runtime,
+                    "timeout_seconds": settings.sandbox_timeout_seconds,
+                },
+                timeout=settings.sandbox_timeout_seconds + 10,
+                follow_redirects=False,
+                trust_env=False,
+            )
+            response.raise_for_status()
+            return TestResult(**response.json())
+        except Exception as exc:  # noqa: BLE001 - stable test result contract.
+            return TestResult(
+                passed=False,
+                exit_code=126,
+                stdout="",
+                stderr=f"Sandbox execution broker failed: {exc}",
+                command=command,
+                tests_ran=False,
+                runtime=runtime,
+            )
+
     def _run_firecracker_tests(
         self,
         *,
@@ -281,12 +351,29 @@ class SandboxService:
                 runtime="firecracker",
             )
 
-        rendered_command = template.format(
-            workspace=shlex.quote(str(workspace)),
-            image=shlex.quote(image),
-            command=shlex.quote(shell_command),
-            timeout=settings.sandbox_timeout_seconds,
-        )
+        try:
+            argv_template = json.loads(template)
+            if not isinstance(argv_template, list) or not argv_template:
+                raise ValueError
+            rendered_command = [
+                str(item).format(
+                    workspace=str(workspace),
+                    image=image,
+                    command=shell_command,
+                    timeout=settings.sandbox_timeout_seconds,
+                )
+                for item in argv_template
+            ]
+        except (json.JSONDecodeError, ValueError):
+            return TestResult(
+                passed=False,
+                exit_code=126,
+                stdout="",
+                stderr="SANDBOX_FIRECRACKER_COMMAND_TEMPLATE must be a JSON argv array.",
+                command=command,
+                tests_ran=False,
+                runtime="firecracker",
+            )
         try:
             result = subprocess.run(
                 rendered_command,
@@ -294,7 +381,7 @@ class SandboxService:
                 text=True,
                 timeout=settings.sandbox_timeout_seconds,
                 check=False,
-                shell=True,
+                shell=False,
             )
             return TestResult(
                 passed=result.returncode == 0,
