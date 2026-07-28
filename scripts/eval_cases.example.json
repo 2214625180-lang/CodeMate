@@ -1,0 +1,16 @@
+{
+  "retrieval": [
+    {
+      "repo_id": "replace-with-repo-id",
+      "question": "add 函数在哪里？",
+      "expected_file": "src/math.js"
+    }
+  ],
+  "fix": [
+    {
+      "repo_id": "replace-with-repo-id",
+      "issue": "add function test fails: expected 5 but received -1",
+      "test_command": "npm test"
+    }
+  ]
+}

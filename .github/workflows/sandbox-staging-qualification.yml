@@ -1,0 +1,90 @@
+name: Sandbox HA Staging Qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Type QUALIFY-SANDBOX to authorize destructive staging drills"
+        required: true
+      requests:
+        description: "Baseline and fault-drill execution count"
+        required: true
+        default: "60"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: codemate-sandbox-staging-qualification
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    if: inputs.confirmation == 'QUALIFY-SANDBOX'
+    runs-on: [self-hosted, codemate-staging, sandbox-admin]
+    environment: staging
+    timeout-minutes: 90
+    env:
+      SANDBOX_QUALIFICATION_KUBE_CONTEXT: ${{ vars.SANDBOX_QUALIFICATION_KUBE_CONTEXT }}
+      SANDBOX_QUALIFICATION_NAMESPACE: ${{ vars.SANDBOX_QUALIFICATION_NAMESPACE }}
+      SANDBOX_QUALIFICATION_URL: ${{ vars.SANDBOX_QUALIFICATION_URL }}
+      SANDBOX_NODE_IMAGE: ${{ vars.SANDBOX_NODE_IMAGE }}
+      SANDBOX_QUALIFICATION_UNSIGNED_IMAGE: ${{ vars.SANDBOX_QUALIFICATION_UNSIGNED_IMAGE }}
+      SANDBOX_WORKLOAD_IDENTITY_ISSUER: ${{ vars.SANDBOX_WORKLOAD_IDENTITY_ISSUER }}
+      SANDBOX_WORKLOAD_IDENTITY_SUBJECT: ${{ vars.SANDBOX_WORKLOAD_IDENTITY_SUBJECT }}
+      SANDBOX_WORKLOAD_IDENTITY_AUDIENCE: ${{ vars.SANDBOX_WORKLOAD_IDENTITY_AUDIENCE }}
+      SANDBOX_REDIS_FAILOVER_COMMAND_JSON: ${{ secrets.SANDBOX_REDIS_FAILOVER_COMMAND_JSON }}
+      SANDBOX_CERTIFICATE_RENEW_COMMAND_JSON: ${{ secrets.SANDBOX_CERTIFICATE_RENEW_COMMAND_JSON }}
+      SANDBOX_QUALIFICATION_CA_PEM: ${{ secrets.SANDBOX_QUALIFICATION_CA_PEM }}
+      SANDBOX_QUALIFICATION_CERT_PEM: ${{ secrets.SANDBOX_QUALIFICATION_CERT_PEM }}
+      SANDBOX_QUALIFICATION_KEY_PEM: ${{ secrets.SANDBOX_QUALIFICATION_KEY_PEM }}
+      SANDBOX_QUALIFICATION_WORKLOAD_KEY_PEM: ${{ secrets.SANDBOX_QUALIFICATION_WORKLOAD_KEY_PEM }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+      - uses: sigstore/cosign-installer@v3
+      - name: Install qualification dependencies
+        run: pip install -r backend/requirements-dev.txt
+      - name: Materialize short-lived qualification credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "$RUNNER_TEMP/codemate-sandbox-qualification"
+          printf '%s' "$SANDBOX_QUALIFICATION_CA_PEM" > "$RUNNER_TEMP/codemate-sandbox-qualification/ca.crt"
+          printf '%s' "$SANDBOX_QUALIFICATION_CERT_PEM" > "$RUNNER_TEMP/codemate-sandbox-qualification/client.crt"
+          printf '%s' "$SANDBOX_QUALIFICATION_KEY_PEM" > "$RUNNER_TEMP/codemate-sandbox-qualification/client.key"
+          printf '%s' "$SANDBOX_QUALIFICATION_WORKLOAD_KEY_PEM" > "$RUNNER_TEMP/codemate-sandbox-qualification/workload.key"
+          {
+            echo "SANDBOX_QUALIFICATION_CA_PATH=$RUNNER_TEMP/codemate-sandbox-qualification/ca.crt"
+            echo "SANDBOX_QUALIFICATION_CERT_PATH=$RUNNER_TEMP/codemate-sandbox-qualification/client.crt"
+            echo "SANDBOX_QUALIFICATION_KEY_PATH=$RUNNER_TEMP/codemate-sandbox-qualification/client.key"
+            echo "SANDBOX_QUALIFICATION_WORKLOAD_KEY_PATH=$RUNNER_TEMP/codemate-sandbox-qualification/workload.key"
+          } >> "$GITHUB_ENV"
+      - name: Execute HA, failover, rotation and negative-control gates
+        run: |
+          python scripts/run_sandbox_ha_qualification.py \
+            --execute \
+            --requests "${{ inputs.requests }}" \
+            --sign-evidence \
+            --output-dir artifacts/sandbox-ha-qualification/run
+      - name: Verify evidence integrity
+        if: always()
+        working-directory: artifacts/sandbox-ha-qualification/run
+        run: sha256sum -c manifest.sha256
+      - name: Upload signed evidence pack
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sandbox-ha-qualification-${{ github.run_id }}
+          path: artifacts/sandbox-ha-qualification/run
+          if-no-files-found: error
+          retention-days: 90
+      - name: Remove qualification credentials
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/codemate-sandbox-qualification"

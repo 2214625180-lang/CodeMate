@@ -1,0 +1,11 @@
+[Unit]
+Description=Watch CodeMate sandbox mTLS certificates for rotation
+
+[Path]
+PathChanged=/etc/codemate/pki/server.crt
+PathChanged=/etc/codemate/pki/server.key
+PathChanged=/etc/codemate/pki/client-ca.crt
+Unit=codemate-sandbox-certificate-reload.service
+
+[Install]
+WantedBy=multi-user.target

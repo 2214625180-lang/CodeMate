@@ -1,0 +1,13 @@
+[project]
+name = "codemate-backend"
+version = "0.1.0"
+description = "FastAPI backend for CodeMate"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = [".", ".."]
+markers = ["integration: requires real PostgreSQL, Redis and HTTP services"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

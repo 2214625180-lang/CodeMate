@@ -1,0 +1,6 @@
+[Unit]
+Description=Reload CodeMate sandbox execution plane after certificate rotation
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl try-restart codemate-sandbox-execution-plane.service

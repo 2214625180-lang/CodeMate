@@ -1,0 +1,142 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sandbox-execution-plane
+  namespace: codemate-sandbox
+  annotations:
+    secret.reloader.stakater.com/reload: sandbox-execution-plane-mtls,sandbox-workload-verifier,sandbox-supply-chain,sandbox-attestation-authority
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 1, maxSurge: 1}
+  selector:
+    matchLabels:
+      app: sandbox-execution-plane
+  template:
+    metadata:
+      labels:
+        app: sandbox-execution-plane
+    spec:
+      serviceAccountName: sandbox-execution-plane
+      terminationGracePeriodSeconds: 60
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels: {app: sandbox-execution-plane}
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {app: sandbox-execution-plane}
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: runner
+          image: codemate-execution-plane:staging
+          command:
+            - uvicorn
+            - app.sandbox.execution_plane:app
+            - --host
+            - 0.0.0.0
+            - --port
+            - "8443"
+            - --workers
+            - "1"
+            - --ssl-certfile
+            - /run/codemate/mtls/tls.crt
+            - --ssl-keyfile
+            - /run/codemate/mtls/tls.key
+            - --ssl-ca-certs
+            - /run/codemate/mtls/ca.crt
+            - --ssl-cert-reqs
+            - "2"
+          env:
+            - {name: APP_ENV, value: production}
+            - {name: SANDBOX_EXECUTION_PLANE_BACKEND, value: kubernetes}
+            - {name: SANDBOX_KUBERNETES_NAMESPACE, value: codemate-sandbox}
+            - {name: SANDBOX_KUBERNETES_WORKSPACE_ROOT, value: /var/lib/codemate/workspaces}
+            - {name: SANDBOX_KUBERNETES_PVC_NAME, value: codemate-sandbox-workspaces}
+            - {name: SANDBOX_WORKLOAD_IDENTITY_ISSUER, value: codemate-staging}
+            - {name: SANDBOX_WORKLOAD_IDENTITY_SUBJECT, value: "spiffe://codemate/staging/code-sandbox"}
+            - {name: SANDBOX_WORKLOAD_IDENTITY_AUDIENCE, value: codemate-sandbox-execution-plane}
+            - {name: SANDBOX_WORKLOAD_IDENTITY_PUBLIC_KEY_PATH, value: /run/codemate/identity/workload-signing.pub}
+            # Replace both values with policy-approved immutable image references.
+            - {name: SANDBOX_NODE_IMAGE, value: "registry.example.invalid/codemate/node-test@sha256:0000000000000000000000000000000000000000000000000000000000000000"}
+            - {name: SANDBOX_PYTHON_IMAGE, value: "registry.example.invalid/codemate/python-test@sha256:0000000000000000000000000000000000000000000000000000000000000000"}
+            - {name: SANDBOX_EXECUTION_STATE_BACKEND, value: redis}
+            - name: SANDBOX_EXECUTION_STATE_REDIS_URL
+              valueFrom:
+                secretKeyRef: {name: sandbox-execution-state, key: redis-url}
+            - {name: SANDBOX_SUPPLY_CHAIN_ENABLED, value: "true"}
+            - {name: SANDBOX_SUPPLY_CHAIN_PUBLIC_KEY_PATH, value: /run/codemate/supply-chain/cosign.pub}
+            - {name: SANDBOX_SUPPLY_CHAIN_REQUIRE_IMAGE_DIGEST, value: "true"}
+            - {name: SANDBOX_SUPPLY_CHAIN_REQUIRE_SLSA, value: "true"}
+            - {name: SANDBOX_SUPPLY_CHAIN_SLSA_SOURCE, value: https://github.com/replace-with-org/codemate}
+            - {name: SANDBOX_NODE_ATTESTATION_ENABLED, value: "true"}
+            - {name: SANDBOX_NODE_ATTESTATION_PUBLIC_KEY_PATH, value: /run/codemate/attestation/authority.pub}
+            - {name: SANDBOX_NODE_ATTESTATION_ALLOWED_MEASUREMENTS, value: replace-with-approved-measurement}
+            - name: SANDBOX_NODE_ATTESTATION_EXPECTED_NODE_ID
+              valueFrom:
+                fieldRef: {fieldPath: spec.nodeName}
+            - name: SANDBOX_NODE_ATTESTATION_VERIFIER_COMMAND_JSON
+              value: '["/usr/local/bin/codemate-node-attestation","verify","--node","{node_id}","--nonce","{nonce}"]'
+          ports:
+            - {name: https, containerPort: 8443}
+          readinessProbe:
+            exec:
+              command:
+                - python
+                - -m
+                - app.sandbox.readiness_probe
+                - https://127.0.0.1:8443/health
+                - /run/codemate/mtls/ca.crt
+                - /run/codemate/mtls/tls.crt
+                - /run/codemate/mtls/tls.key
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket: {port: https}
+            periodSeconds: 20
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "1", memory: 512Mi}
+          volumeMounts:
+            - {name: mtls, mountPath: /run/codemate/mtls, readOnly: true}
+            - {name: identity, mountPath: /run/codemate/identity, readOnly: true}
+            - {name: supply-chain, mountPath: /run/codemate/supply-chain, readOnly: true}
+            - {name: attestation, mountPath: /run/codemate/attestation, readOnly: true}
+            - {name: workspaces, mountPath: /var/lib/codemate/workspaces}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: mtls
+          secret: {secretName: sandbox-execution-plane-mtls, defaultMode: 288}
+        - name: identity
+          secret: {secretName: sandbox-workload-verifier, defaultMode: 288}
+        - name: supply-chain
+          secret: {secretName: sandbox-supply-chain, defaultMode: 288}
+        - name: attestation
+          secret: {secretName: sandbox-attestation-authority, defaultMode: 288}
+        - name: workspaces
+          persistentVolumeClaim: {claimName: codemate-sandbox-workspaces}
+        - name: tmp
+          emptyDir: {sizeLimit: 64Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sandbox-execution-plane
+  namespace: codemate-sandbox
+spec:
+  selector: {app: sandbox-execution-plane}
+  ports:
+    - {name: https, port: 8443, targetPort: https}
