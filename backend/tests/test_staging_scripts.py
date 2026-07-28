@@ -1,6 +1,7 @@
 import json
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -13,6 +14,9 @@ from scripts.mcp_container_compliance import static_controls
 from scripts.run_sandbox_ha_qualification import parse_argv, ready_pods, release_qualified
 from scripts.run_staging_qualification import run_gate, write_manifest
 from scripts.sandbox_execution_probe import build_archive, percentile
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_fault_evidence_detects_service_state_in_array_and_json_lines():
@@ -138,7 +142,7 @@ def test_sandbox_qualification_refuses_mutation_without_execute(tmp_path):
     completed = subprocess.run(
         [
             sys.executable,
-            "scripts/run_sandbox_ha_qualification.py",
+            str(PROJECT_ROOT / "scripts/run_sandbox_ha_qualification.py"),
             "--output-dir",
             str(tmp_path),
         ],
