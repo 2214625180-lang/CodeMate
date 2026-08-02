@@ -1,14 +1,16 @@
 FROM node:20-alpine AS dependencies
 
 WORKDIR /app
+ARG NPM_REGISTRY=https://registry.npmjs.org
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --registry="$NPM_REGISTRY" --replace-registry-host=always
 
 FROM node:20-alpine AS production-dependencies
 
 WORKDIR /app
+ARG NPM_REGISTRY=https://registry.npmjs.org
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --registry="$NPM_REGISTRY" --replace-registry-host=always
 
 FROM node:20-alpine AS builder
 

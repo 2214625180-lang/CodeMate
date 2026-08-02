@@ -154,7 +154,8 @@ class Settings(BaseSettings):
     sandbox_node_image: str = "node:20-alpine"
     sandbox_python_image: str = "python:3.11-slim"
     sandbox_allowed_commands: str = (
-        "npm test,npm run test:health,pnpm test,yarn test,pytest,python -m pytest,"
+        "npm test,npm run test:targeted,npm run test:health,pnpm test,yarn test,pytest,"
+        "python -m pytest,"
         "python -m unittest discover,python -m unittest tests.test_health"
     )
     sandbox_execution_broker_url: str | None = None

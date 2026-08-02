@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AgentTimeline } from "@/components/agent/AgentTimeline";
 import { TestResultPanel } from "@/components/agent/TestResultPanel";
@@ -47,9 +47,19 @@ const TRACE_EVENTS: TraceEventType[] = [
   "error"
 ];
 
+const TERMINAL_RUN_STATUSES = new Set([
+  "verified_success",
+  "unverified_patch",
+  "not_reproduced",
+  "failed",
+  "infra_error"
+]);
+
 export default function RepoFixPage() {
   const params = useParams<{ repoId: string }>();
+  const searchParams = useSearchParams();
   const repoId = params.repoId;
+  const requestedRunId = searchParams.get("runId");
   const [issue, setIssue] = useState("");
   const [testCommand, setTestCommand] = useState("npm test");
   const [delegatedIdentityId, setDelegatedIdentityId] = useState("");
@@ -85,11 +95,91 @@ export default function RepoFixPage() {
     return [...events].reverse().find((event) => testEvents.includes(event.type))?.output ?? null;
   }, [events]);
 
+  const refreshRun = useCallback(async (nextRunId: string) => {
+    try {
+      const data = await getRun(nextRunId);
+      setRun(data);
+      setIssue((current) => current || data.user_input);
+      setTestCommand((current) => data.test_command || current);
+      if (TERMINAL_RUN_STATUSES.has(data.status)) {
+        setIsRunning(false);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load run");
+    }
+  }, []);
+
+  const connectTrace = useCallback(
+    (nextRunId: string) => {
+      eventSourceRef.current?.close();
+      const source = new EventSource(`${API_BASE_URL}/runs/${nextRunId}/trace`);
+      eventSourceRef.current = source;
+
+      for (const eventName of TRACE_EVENTS) {
+        source.addEventListener(eventName, (message) => {
+          const event = JSON.parse((message as MessageEvent).data) as TraceEvent;
+          setEvents((current) => {
+            if (current.some((item) => item.id === event.id)) {
+              return current;
+            }
+            return [...current, event];
+          });
+
+          if (eventName === "approval_decision") {
+            const approval = readApproval(event.output);
+            if (approval) {
+              setApprovalOverrides((current) => ({ ...current, [approval.id]: approval }));
+            }
+          }
+          if (eventName === "approval_required") {
+            void refreshRun(nextRunId);
+          }
+          if (eventName === "mcp_execution") {
+            const execution = readExecution(event.output);
+            if (execution) {
+              setExecutionOverrides((current) => ({
+                ...current,
+                [execution.id]: execution
+              }));
+            }
+            void refreshRun(nextRunId);
+          }
+
+          if (eventName === "final" || eventName === "error") {
+            source.close();
+            setIsRunning(false);
+            void refreshRun(nextRunId);
+          }
+        });
+      }
+
+      source.onerror = () => {
+        source.close();
+        setIsRunning(false);
+        void refreshRun(nextRunId);
+      };
+    },
+    [refreshRun]
+  );
+
   useEffect(() => {
     return () => {
       eventSourceRef.current?.close();
     };
   }, []);
+
+  useEffect(() => {
+    if (!requestedRunId || requestedRunId === runId) {
+      return;
+    }
+    setRunId(requestedRunId);
+    setRun(null);
+    setEvents([]);
+    setError(null);
+    setIsRunning(true);
+    void refreshRun(requestedRunId);
+    connectTrace(requestedRunId);
+  }, [connectTrace, refreshRun, requestedRunId, runId]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -119,65 +209,6 @@ export default function RepoFixPage() {
     } catch (err) {
       setIsRunning(false);
       setError(err instanceof Error ? err.message : "Failed to start fix run");
-    }
-  }
-
-  function connectTrace(nextRunId: string) {
-    eventSourceRef.current?.close();
-    const source = new EventSource(`${API_BASE_URL}/runs/${nextRunId}/trace`);
-    eventSourceRef.current = source;
-
-    for (const eventName of TRACE_EVENTS) {
-      source.addEventListener(eventName, (message) => {
-        const event = JSON.parse((message as MessageEvent).data) as TraceEvent;
-        setEvents((current) => {
-          if (current.some((item) => item.id === event.id)) {
-            return current;
-          }
-          return [...current, event];
-        });
-
-        if (eventName === "approval_decision") {
-          const approval = readApproval(event.output);
-          if (approval) {
-            setApprovalOverrides((current) => ({ ...current, [approval.id]: approval }));
-          }
-        }
-        if (eventName === "approval_required") {
-          void refreshRun(nextRunId);
-        }
-        if (eventName === "mcp_execution") {
-          const execution = readExecution(event.output);
-          if (execution) {
-            setExecutionOverrides((current) => ({
-              ...current,
-              [execution.id]: execution
-            }));
-          }
-          void refreshRun(nextRunId);
-        }
-
-        if (eventName === "final" || eventName === "error") {
-          source.close();
-          setIsRunning(false);
-          void refreshRun(nextRunId);
-        }
-      });
-    }
-
-    source.onerror = () => {
-      source.close();
-      setIsRunning(false);
-      void refreshRun(nextRunId);
-    };
-  }
-
-  async function refreshRun(nextRunId: string) {
-    try {
-      const data = await getRun(nextRunId);
-      setRun(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load run");
     }
   }
 

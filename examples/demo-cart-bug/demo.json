@@ -1,0 +1,21 @@
+{
+  "repo_id": "d8ef36d0-7776-5bd1-b219-0bfcb44eaf4c",
+  "dataset_id": "72df7a73-0966-5892-a395-f829bbd2cbbc",
+  "repository_name": "demo-cart-bug",
+  "dataset_name": "Interview Demo - Multi-file Cart Fix",
+  "dataset_version": 1,
+  "issue": "Checkout incident: a fixed-value coupon can make the discounted subtotal negative. Reproduce the failure with the targeted coupon test, then make coupon handling safe without changing tests. Preserve the full checkout pricing semantics; the complete regression suite must still pass.",
+  "target_test_command": "npm run test:targeted",
+  "regression_test_command": "npm test",
+  "allowed_changed_files": [
+    "src/cart.js",
+    "src/checkout.js"
+  ],
+  "category": "cross_file_business_logic",
+  "tags": [
+    "javascript",
+    "multi-file",
+    "reflection",
+    "regression"
+  ]
+}

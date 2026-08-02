@@ -164,49 +164,21 @@ CI_WORKFLOW_FILENAME=codemate-ci.yml
 
 Repo Memory is refreshed after successful indexing and can also be refreshed manually. CI inspection detects common local CI configs and generates a GitHub Actions workflow for Node and Python projects.
 
-## Demo Repository
+## One-command real-model demo
 
-Create a small JavaScript repo:
+The main demo no longer uses the `a - b -> a + b` repository that matches a hard-coded Mock rule. Configure a real `LLM_PROVIDER`, explicit `LLM_MODEL`, and credential in `.env`, then run:
 
-```text
-demo-bug-repo/
-  package.json
-  src/math.js
-  test/math.test.js
+```bash
+make demo
 ```
 
-`package.json`:
+The launcher starts the stack, materializes [`examples/demo-cart-bug`](examples/demo-cart-bug) as a fixed Git commit, imports and indexes it, creates the `Interview Demo - Multi-file Cart Fix` benchmark, starts one real-model repair, and prints clickable repository, Agent Timeline, and evaluation URLs. No external Git repository is required.
 
-```json
-{
-  "scripts": {
-    "test": "node --test"
-  },
-  "type": "module"
-}
-```
+The targeted test first exposes the negative-coupon defect in `src/cart.js`; the full `npm test` suite then checks the discounted tax-base semantics in `src/checkout.js`. A narrow patch can fail regression and naturally trigger Reflect, while a stronger model may identify both causes before its first patch. The workflow never fabricates a failed first iteration. Only a reproduced baseline failure followed by executed, passing target and regression tests can produce `verified_success`.
 
-`src/math.js`:
+The Mock provider remains for offline unit and deterministic smoke tests, but `make demo` rejects Mock. See the [Demo script](docs/demo-script.md) for the presentation flow and local sandbox security note.
 
-```js
-export function add(a, b) {
-  return a - b;
-}
-```
-
-`test/math.test.js`:
-
-```js
-import assert from "node:assert/strict";
-import test from "node:test";
-import { add } from "../src/math.js";
-
-test("add sums two numbers", () => {
-  assert.equal(add(2, 3), 5);
-});
-```
-
-Commit it and expose it as a Git URL the backend can clone.
+If local services already occupy the defaults, override `POSTGRES_PORT`, `REDIS_PORT`, `QDRANT_HTTP_PORT`, `QDRANT_GRPC_PORT`, `BACKEND_PORT`, and `FRONTEND_PORT` in `.env`; the frontend API address and printed demo links follow those values.
 
 ## Repository Indexing
 

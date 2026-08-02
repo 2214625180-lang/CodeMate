@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-codemate}
       POSTGRES_DB: ${POSTGRES_DB:-codemate}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -18,7 +18,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -28,8 +28,8 @@ services:
   qdrant:
     image: qdrant/qdrant:v1.9.5
     ports:
-      - "6333:6333"
-      - "6334:6334"
+      - "${QDRANT_HTTP_PORT:-6333}:6333"
+      - "${QDRANT_GRPC_PORT:-6334}:6334"
     volumes:
       - qdrant_data:/qdrant/storage
 
@@ -53,8 +53,8 @@ services:
       REDIS_URL: redis://redis:6379/0
       QDRANT_URL: http://qdrant:6333
       QDRANT_COLLECTION: codemate_chunks
-      FRONTEND_URL: http://localhost:3000
-      API_CORS_ORIGINS: http://localhost:3000
+      FRONTEND_URL: http://localhost:${FRONTEND_PORT:-3000}
+      API_CORS_ORIGINS: http://localhost:${FRONTEND_PORT:-3000}
       EVALUATION_ADMIN_TOKEN: ${EVALUATION_ADMIN_TOKEN:-}
       EVALUATION_CI_TOKEN: ${EVALUATION_CI_TOKEN:-}
       EVALUATION_READ_TOKEN: ${EVALUATION_READ_TOKEN:-}
@@ -200,11 +200,11 @@ services:
       SANDBOX_FIRECRACKER_COMMAND_TEMPLATE: ${SANDBOX_FIRECRACKER_COMMAND_TEMPLATE:-}
       SANDBOX_NODE_IMAGE: node:20-alpine
       SANDBOX_PYTHON_IMAGE: python:3.11-slim
-      SANDBOX_ALLOWED_COMMANDS: ${SANDBOX_ALLOWED_COMMANDS:-npm test,npm run test:health,pnpm test,yarn test,pytest,python -m pytest,python -m unittest discover,python -m unittest tests.test_health}
+      SANDBOX_ALLOWED_COMMANDS: ${SANDBOX_ALLOWED_COMMANDS:-npm test,npm run test:targeted,npm run test:health,pnpm test,yarn test,pytest,python -m pytest,python -m unittest discover,python -m unittest tests.test_health}
       SANDBOX_EXECUTION_BROKER_URL: ${SANDBOX_EXECUTION_BROKER_URL:-}
       SANDBOX_EXECUTION_BROKER_TOKEN: ${SANDBOX_EXECUTION_BROKER_TOKEN:-}
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8000}:8000"
     volumes:
       - ./backend/app:/app/app
       - ./backend/workspaces:/app/workspaces
@@ -361,7 +361,7 @@ services:
       SANDBOX_FIRECRACKER_COMMAND_TEMPLATE: ${SANDBOX_FIRECRACKER_COMMAND_TEMPLATE:-}
       SANDBOX_NODE_IMAGE: node:20-alpine
       SANDBOX_PYTHON_IMAGE: python:3.11-slim
-      SANDBOX_ALLOWED_COMMANDS: ${SANDBOX_ALLOWED_COMMANDS:-npm test,npm run test:health,pnpm test,yarn test,pytest,python -m pytest,python -m unittest discover,python -m unittest tests.test_health}
+      SANDBOX_ALLOWED_COMMANDS: ${SANDBOX_ALLOWED_COMMANDS:-npm test,npm run test:targeted,npm run test:health,pnpm test,yarn test,pytest,python -m pytest,python -m unittest discover,python -m unittest tests.test_health}
     volumes:
       - ./backend/app:/app/app
       - ./backend/workspaces:/app/workspaces
@@ -377,8 +377,11 @@ services:
   frontend:
     build:
       context: ./frontend
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:${BACKEND_PORT:-8000}
     environment:
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:${BACKEND_PORT:-8000}
       BACKEND_API_BASE_URL: http://backend:8000
       CODEMATE_EVALUATION_API_TOKEN: ${EVALUATION_ADMIN_TOKEN:-}
       CODEMATE_PROXY_IDENTITY_SECRET: ${CODEMATE_PROXY_IDENTITY_SECRET:-}
@@ -397,7 +400,7 @@ services:
       CODEMATE_RBAC_VIEWER_TEAMS: ${CODEMATE_RBAC_VIEWER_TEAMS:-}
       CODEMATE_RBAC_VIEWER_ORGS: ${CODEMATE_RBAC_VIEWER_ORGS:-}
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
     volumes:
       - ./artifacts:/app/artifacts
     depends_on:

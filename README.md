@@ -166,49 +166,21 @@ CI_WORKFLOW_FILENAME=codemate-ci.yml
 
 Repo Memory 会在索引成功后刷新，也可以手动刷新。CI inspection 会识别常见本地 CI 配置，并为 Node/Python 项目生成 GitHub Actions workflow。
 
-## Demo 仓库
+## 一键真实模型 Demo
 
-创建一个小 JavaScript 仓库：
+主 Demo 不再使用命中 Mock 硬编码规则的 `a - b -> a + b` 仓库。配置 `.env` 中的真实 `LLM_PROVIDER`、显式 `LLM_MODEL` 和对应凭据后运行：
 
-```text
-demo-bug-repo/
-  package.json
-  src/math.js
-  test/math.test.js
+```bash
+make demo
 ```
 
-`package.json`:
+脚本会自动启动服务，把内置的 [`examples/demo-cart-bug`](examples/demo-cart-bug) 制作为固定 Git commit，导入并索引仓库，创建 `Interview Demo - Multi-file Cart Fix` benchmark，启动一次真实模型修复，并输出可点击的仓库、Agent Timeline 和评测 URL；不再需要创建或暴露外部 Git 仓库。
 
-```json
-{
-  "scripts": {
-    "test": "node --test"
-  },
-  "type": "module"
-}
-```
+这个 fixture 的目标测试先暴露 `src/cart.js` 的优惠券负数问题，完整 `npm test` 再检查 `src/checkout.js` 的折后税基语义。窄修复可能在回归阶段失败并自然触发 Reflect；强模型也可以一次识别两个根因，流程不会伪造第一轮失败。只有 Patch 前复现失败、Patch 后目标测试和回归测试都实际运行且通过，结果才是 `verified_success`。
 
-`src/math.js`:
+Mock provider 仍保留给离线单元测试和 deterministic smoke test，但 `make demo` 会拒绝 Mock。完整讲解与安全说明见 [Demo 脚本](docs/demo-script.md)。
 
-```js
-export function add(a, b) {
-  return a - b;
-}
-```
-
-`test/math.test.js`:
-
-```js
-import assert from "node:assert/strict";
-import test from "node:test";
-import { add } from "../src/math.js";
-
-test("add sums two numbers", () => {
-  assert.equal(add(2, 3), 5);
-});
-```
-
-提交仓库，并把它暴露成后端可以 clone 的 Git URL。
+若本机已有 PostgreSQL、Redis 或其他服务占用默认端口，可在 `.env` 中修改 `POSTGRES_PORT`、`REDIS_PORT`、`QDRANT_HTTP_PORT`、`QDRANT_GRPC_PORT`、`BACKEND_PORT` 和 `FRONTEND_PORT`；启动器输出的链接与前端 API 地址会同步更新。
 
 ## 仓库索引
 

@@ -1,0 +1,71 @@
+# Local interview-demo overlay only. It intentionally gives the worker access to
+# the local Docker socket so the dependency-free fixture can run in isolated,
+# network-disabled test containers. Production uses the managed execution plane.
+services:
+  backend:
+    image: codemate-backend:demo
+    environment:
+      MCP_REGISTRY_ENABLED: "false"
+      MCP_HEALTH_MONITOR_ENABLED: "false"
+
+  worker:
+    image: codemate-backend:demo
+    environment:
+      MCP_REGISTRY_ENABLED: "false"
+      MCP_HEALTH_MONITOR_ENABLED: "false"
+    volumes:
+      - ${CODEMATE_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
+
+  demo-seed:
+    profiles: ["demo"]
+    image: codemate-backend:demo
+    build:
+      context: ./backend
+    command: ["python", "/demo/scripts/seed_demo.py"]
+    environment:
+      APP_ENV: local
+      PYTHONPATH: /app
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-codemate}:${POSTGRES_PASSWORD:-codemate}@postgres:5432/${POSTGRES_DB:-codemate}
+      DATABASE_MIGRATIONS_ENABLED: "false"
+      REDIS_URL: redis://redis:6379/0
+      RQ_QUEUE_NAME: codemate-index
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: codemate_chunks
+      WORKSPACE_DIR: /app/workspaces
+      FRONTEND_URL: http://localhost:${FRONTEND_PORT:-3000}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-mock}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-384}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      EMBEDDING_BATCH_SIZE: ${EMBEDDING_BATCH_SIZE:-64}
+      EMBEDDING_TIMEOUT_SECONDS: ${EMBEDDING_TIMEOUT_SECONDS:-60}
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.2}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-60}
+      LLM_MAX_CONTEXT_CHARS: ${LLM_MAX_CONTEXT_CHARS:-24000}
+      LLM_MAX_OUTPUT_TOKENS: ${LLM_MAX_OUTPUT_TOKENS:-4096}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      REPO_MEMORY_MAX_FILES: ${REPO_MEMORY_MAX_FILES:-12}
+      REPO_MEMORY_MAX_SYMBOLS: ${REPO_MEMORY_MAX_SYMBOLS:-30}
+      MCP_DEFAULT_TENANT_SLUG: ${MCP_DEFAULT_TENANT_SLUG:-default}
+    volumes:
+      - ./backend/workspaces:/app/workspaces
+      - ./examples:/demo/examples:ro
+      - ./scripts:/demo/scripts:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    restart: "no"

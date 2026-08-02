@@ -1,0 +1,68 @@
+from __future__ import annotations
+
+import importlib.util
+import json
+from pathlib import Path
+
+import pytest
+
+from app.core.config import settings
+from app.llm.mock_provider import MockLLMProvider
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+FIXTURE_ROOT = PROJECT_ROOT / "examples" / "demo-cart-bug"
+
+
+def load_start_demo_module():
+    script_path = PROJECT_ROOT / "scripts" / "start_demo.py"
+    spec = importlib.util.spec_from_file_location("codemate_start_demo", script_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_main_demo_rejects_mock_provider() -> None:
+    launcher = load_start_demo_module()
+
+    with pytest.raises(RuntimeError, match="LLM_PROVIDER=mock"):
+        launcher.validate_real_llm({"LLM_PROVIDER": "mock"})
+
+
+def test_main_demo_requires_explicit_model_and_provider_credential() -> None:
+    launcher = load_start_demo_module()
+
+    with pytest.raises(RuntimeError, match="explicit LLM_MODEL"):
+        launcher.validate_real_llm({"LLM_PROVIDER": "openai", "OPENAI_API_KEY": "test-key"})
+    with pytest.raises(RuntimeError, match="OPENAI_API_KEY"):
+        launcher.validate_real_llm({"LLM_PROVIDER": "openai", "LLM_MODEL": "test-model"})
+
+    assert launcher.validate_real_llm(
+        {
+            "LLM_PROVIDER": "openai",
+            "LLM_MODEL": "test-model",
+            "OPENAI_API_KEY": "test-key",
+        }
+    ) == ("openai", "test-model")
+
+
+def test_demo_fixture_is_multi_file_and_not_supported_by_mock_patch_rules() -> None:
+    manifest = json.loads((FIXTURE_ROOT / "demo.json").read_text(encoding="utf-8"))
+    files = {
+        relative_path: (FIXTURE_ROOT / relative_path).read_text(encoding="utf-8")
+        for relative_path in manifest["allowed_changed_files"]
+    }
+
+    assert len(files) >= 2
+    assert manifest["target_test_command"] == "npm run test:targeted"
+    assert manifest["regression_test_command"] == "npm test"
+    assert manifest["target_test_command"] in settings.allowed_test_commands
+    assert (
+        MockLLMProvider().generate_patch(
+            issue=manifest["issue"],
+            diagnosis="fixture contract check",
+            files=files,
+        )
+        == ""
+    )
