@@ -186,10 +186,31 @@ def test_resume_executes_approved_tool_then_continues_from_checkpoint(approval_d
         "_invoke_fix_graph",
         lambda _run, state: {
             **state,
-            "status": "success",
+            "status": "verified_success",
             "final_summary": "resumed",
             "final_diff": "",
-            "test_result": {},
+            "verification_result": {
+                "status": "verified_success",
+                "passed": True,
+                "tests_ran": True,
+                "patch_applied": True,
+                "baseline": {
+                    "passed": False,
+                    "tests_ran": True,
+                    "exit_code": 1,
+                    "failure_kind": "test_failure",
+                },
+                "targeted": {
+                    "passed": True,
+                    "tests_ran": True,
+                    "exit_code": 0,
+                },
+                "regression": {
+                    "passed": True,
+                    "tests_ran": True,
+                    "exit_code": 0,
+                },
+            },
             "iterations": 0,
         },
     )
@@ -199,7 +220,7 @@ def test_resume_executes_approved_tool_then_continues_from_checkpoint(approval_d
     db.refresh(approval)
     db.refresh(run)
     assert approval.status == "completed"
-    assert run.status == "success"
+    assert run.status == "verified_success"
     assert executed[0]["expected_arguments_hash"] == approval.arguments_hash
     assert any(step.tool_name == "tracker.update_issue" for step in run.steps)
 

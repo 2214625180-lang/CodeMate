@@ -6,7 +6,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        env_ignore_empty=True,
+        extra="ignore",
+    )
 
     app_env: str = "local"
     database_url: str = "postgresql+psycopg://codemate:codemate@localhost:5432/codemate"
@@ -44,6 +49,7 @@ class Settings(BaseSettings):
     deepseek_api_key: str | None = None
     deepseek_base_url: str = "https://api.deepseek.com"
     retrieval_top_k: int = 8
+    retrieval_strategy: str = "hybrid"
     retrieval_min_vector_score: float = 0.72
     retrieval_candidate_multiplier: int = 4
     retrieval_rerank_enabled: bool = True
@@ -129,6 +135,16 @@ class Settings(BaseSettings):
     otel_service_name: str = "codemate-backend"
     otel_exporter_otlp_endpoint: str | None = None
     max_agent_iterations: int = 3
+    agent_planner_mode: str = "adaptive"
+    agent_max_local_tool_calls: int = 12
+    agent_max_planner_calls: int = 16
+    agent_max_planner_tokens: int = 24_000
+    agent_max_loop_seconds: int = 600
+    agent_max_no_progress_steps: int = 3
+    agent_max_read_lines: int = 800
+    agent_max_evidence_items: int = 40
+    agent_max_action_history: int = 64
+    evaluation_llm_cost_per_million_tokens_usd: float | None = None
     sandbox_workspace_dir: str = "/tmp/codemate-runs"
     sandbox_timeout_seconds: int = 120
     sandbox_network_disabled: bool = True
@@ -137,7 +153,10 @@ class Settings(BaseSettings):
     sandbox_firecracker_command_template: str | None = None
     sandbox_node_image: str = "node:20-alpine"
     sandbox_python_image: str = "python:3.11-slim"
-    sandbox_allowed_commands: str = "npm test,pnpm test,yarn test,pytest,python -m pytest"
+    sandbox_allowed_commands: str = (
+        "npm test,npm run test:health,pnpm test,yarn test,pytest,python -m pytest,"
+        "python -m unittest discover,python -m unittest tests.test_health"
+    )
     sandbox_execution_broker_url: str | None = None
     sandbox_execution_broker_token: str | None = None
     sandbox_docker_workspace_volume: str | None = None
@@ -300,6 +319,22 @@ class Settings(BaseSettings):
 
     def validate_security_config(self) -> None:
         normalized_env = self.app_env.strip().lower()
+        agent_limits = {
+            "MAX_AGENT_ITERATIONS": self.max_agent_iterations,
+            "AGENT_MAX_LOCAL_TOOL_CALLS": self.agent_max_local_tool_calls,
+            "AGENT_MAX_PLANNER_CALLS": self.agent_max_planner_calls,
+            "AGENT_MAX_PLANNER_TOKENS": self.agent_max_planner_tokens,
+            "AGENT_MAX_LOOP_SECONDS": self.agent_max_loop_seconds,
+            "AGENT_MAX_NO_PROGRESS_STEPS": self.agent_max_no_progress_steps,
+            "AGENT_MAX_READ_LINES": self.agent_max_read_lines,
+            "AGENT_MAX_EVIDENCE_ITEMS": self.agent_max_evidence_items,
+            "AGENT_MAX_ACTION_HISTORY": self.agent_max_action_history,
+        }
+        invalid_agent_limits = [name for name, value in agent_limits.items() if value < 1]
+        if invalid_agent_limits:
+            raise RuntimeError(
+                f"{', '.join(invalid_agent_limits)} must be positive integers."
+            )
         if self.otel_enabled and not (self.otel_exporter_otlp_endpoint or "").strip():
             raise RuntimeError(
                 "OTEL_EXPORTER_OTLP_ENDPOINT is required when OTEL_ENABLED=true."

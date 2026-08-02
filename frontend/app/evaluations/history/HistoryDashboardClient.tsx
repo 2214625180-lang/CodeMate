@@ -703,12 +703,14 @@ function GateBadge({ value }: { value: EvaluationHistoryRun["gate_status"] }) {
 
 function metricLabel(metricName: string) {
   const labels: Record<string, string> = {
-    recall_at_5: "Recall@5",
     fix_success_rate: "Fix Success Rate",
+    final_verified_fix_rate: "Final Verified Fix Rate",
     avg_latency_sec: "Avg Latency",
     avg_tool_calls: "Avg Tool Calls"
   };
-  return labels[metricName] ?? metricName;
+  return /^recall_at_\d+$/.test(metricName)
+    ? `Recall@${metricName.replace("recall_at_", "")}`
+    : labels[metricName] ?? metricName;
 }
 
 function numberValue(value: unknown): number | null {

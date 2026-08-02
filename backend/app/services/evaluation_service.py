@@ -1,11 +1,27 @@
 from collections import Counter
 from datetime import datetime
+import hashlib
+import inspect
+import json
+import math
+from pathlib import Path
+import re
+import subprocess
 from time import perf_counter
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.agent.verification import (
+    VERIFIED_SUCCESS,
+    classify_test_result,
+    verification_evidence_is_complete,
+)
+from app.agent.actions import plan_next_action_json_schema
 from app.core.config import settings
+from app.llm.mock_provider import MockLLMProvider
+from app.llm.openai_compatible_provider import OpenAICompatibleLLMProvider
 from app.models.agent_run import AgentRun
 from app.models.evaluation import Evaluation
 from app.models.evaluation_dataset import EvaluationDataset
@@ -19,6 +35,12 @@ from app.schemas.evaluations import (
 )
 from app.services.agent_service import AgentService
 from app.services.retrieval_service import RetrievalResult, RetrievalService
+
+
+BENCHMARK_PROTOCOL_VERSION = "codemate-benchmark/v1"
+LOCAL_AGENT_TOOL_NAMES = frozenset(
+    {"SearchCode", "ReadFile", "ListFiles", "FindSymbol", "FindReferences", "RunTests"}
+)
 
 
 class EvaluationService:
@@ -51,9 +73,7 @@ class EvaluationService:
             raise ValueError("Evaluation runs must have the same task type")
 
         compatibility_warnings = self._comparison_warnings(baseline_run, candidate_run)
-        primary_metric = (
-            "fix_success_rate" if baseline_run.task_type == "fix" else "recall_at_5"
-        )
+        primary_metric = self._primary_metric_for_run(baseline_run)
         metric_deltas = self._comparison_metric_deltas(
             baseline_run,
             candidate_run,
@@ -148,7 +168,7 @@ class EvaluationService:
             statement = statement.where(EvaluationRun.status == status_filter)
 
         runs = list(self.db.execute(statement).scalars().all())
-        primary_metric = self._primary_metric_for_task(dataset.task_type)
+        primary_metric = self._dataset_primary_metric(dataset, runs)
         history_runs = [
             self._history_run(
                 run,
@@ -210,7 +230,7 @@ class EvaluationService:
             dataset_version=dataset_version,
             dataset_snapshot_id=dataset_snapshot_id,
             case_count=len(request.cases),
-            config_snapshot=self._config_snapshot(),
+            config_snapshot=self._config_snapshot(task_type="retrieval", cases=cases),
             request_json=request_json,
         )
         self.db.add(run)
@@ -243,7 +263,7 @@ class EvaluationService:
             dataset_version=dataset_version,
             dataset_snapshot_id=dataset_snapshot_id,
             case_count=len(request.cases),
-            config_snapshot=self._config_snapshot(),
+            config_snapshot=self._config_snapshot(task_type="fix", cases=cases),
             request_json=request_json,
         )
         self.db.add(run)
@@ -287,6 +307,8 @@ class EvaluationService:
                     question=case.question,
                     expected_file=case.expected_file,
                     expected_lines=case.expected_lines,
+                    category=case.category,
+                    tags=case.tags,
                     top_k=request.top_k,
                 )
             )
@@ -319,6 +341,9 @@ class EvaluationService:
                     test_command=case.test_command,
                     expected_status=case.expected_status,
                     expected_diff_contains=case.expected_diff_contains,
+                    allowed_changed_files=case.allowed_changed_files,
+                    category=case.category,
+                    tags=case.tags,
                     require_tests_ran=request.require_tests_ran,
                 )
             )
@@ -351,6 +376,8 @@ class EvaluationService:
         question: str,
         expected_file: str,
         expected_lines: dict | list | None,
+        category: str,
+        tags: list[str],
         top_k: int,
     ) -> Evaluation:
         started = perf_counter()
@@ -362,8 +389,22 @@ class EvaluationService:
             )
             latency_ms = int((perf_counter() - started) * 1000)
             citations = [self._citation(result) for result in retrieved[:top_k]]
-            passed = any(citation["file_path"] == expected_file for citation in citations[:5])
-            failure_category = None if passed else self._retrieval_failure(citations)
+            case_metrics = self._retrieval_case_metrics(
+                citations=citations,
+                expected_file=expected_file,
+                expected_lines=expected_lines,
+            )
+            passed = case_metrics["relevant_hit"] is True
+            failure_category = (
+                None
+                if passed
+                else self._retrieval_failure(
+                    citations,
+                    expected_file=expected_file,
+                    expected_lines=expected_lines,
+                )
+            )
+            metric_name = f"recall_at_{top_k}"
             result = Evaluation(
                 evaluation_run_id=evaluation_run_id,
                 case_id=case_id,
@@ -377,14 +418,16 @@ class EvaluationService:
                     "citations": citations,
                     "top_k": top_k,
                     "expected_file": expected_file,
+                    "expected_lines": expected_lines,
+                    "metrics": case_metrics,
                 },
                 passed=passed,
                 latency_ms=latency_ms,
-                score=1.0 if passed else 0.0,
+                score=float(case_metrics["ndcg"]),
                 failure_category=failure_category,
                 provider=settings.embedding_provider,
-                model=settings.embedding_model,
-                metadata_json={"metric": "recall_at_5"},
+                model=self._effective_embedding_model(),
+                metadata_json={"metric": metric_name, "category": category, "tags": tags},
             )
         except Exception as exc:  # noqa: BLE001 - keep eval batches inspectable.
             self.db.rollback()
@@ -404,8 +447,12 @@ class EvaluationService:
                 score=0.0,
                 failure_category="runner_error",
                 provider=settings.embedding_provider,
-                model=settings.embedding_model,
-                metadata_json={"metric": "recall_at_5"},
+                model=self._effective_embedding_model(),
+                metadata_json={
+                    "metric": f"recall_at_{top_k}",
+                    "category": category,
+                    "tags": tags,
+                },
             )
 
         self.db.add(result)
@@ -422,15 +469,44 @@ class EvaluationService:
             for result in results
             if not result.passed
         )
-        return {
+        case_metrics = [
+            result.result_json.get("metrics")
+            for result in results
+            if isinstance(result.result_json, dict)
+            and isinstance(result.result_json.get("metrics"), dict)
+        ]
+        metric_name = f"recall_at_{top_k}"
+        recall = passed_count / case_count if case_count else 0.0
+        metrics = {
             "cases": case_count,
             "passed": passed_count,
             "failed": case_count - passed_count,
-            "recall_at_5": passed_count / case_count if case_count else 0.0,
+            "primary_metric": metric_name,
+            metric_name: recall,
+            "mrr": self._average(
+                metric.get("reciprocal_rank") for metric in case_metrics
+            )
+            or 0.0,
+            "ndcg": self._average(metric.get("ndcg") for metric in case_metrics) or 0.0,
+            "file_hit_rate": self._rate(case_metrics, "file_hit"),
+            "line_hit_rate": self._rate(case_metrics, "line_hit", eligible="lines_required"),
+            "line_overlap": self._average(
+                metric.get("line_overlap")
+                for metric in case_metrics
+                if metric.get("lines_required") is True
+            ),
+            "citation_precision": self._average(
+                metric.get("citation_precision") for metric in case_metrics
+            )
+            or 0.0,
             "avg_latency_sec": (sum(latencies) / len(latencies) / 1000) if latencies else 0.0,
+            "p50_latency_sec": self._percentile(latencies, 0.50) / 1000,
+            "p95_latency_sec": self._percentile(latencies, 0.95) / 1000,
             "failure_distribution": dict(failures),
+            "by_category": self._retrieval_metrics_by_category(results),
             "top_k": top_k,
         }
+        return metrics
 
     def _run_fix_case(
         self,
@@ -442,6 +518,9 @@ class EvaluationService:
         test_command: str | None,
         expected_status: str,
         expected_diff_contains: list[str],
+        allowed_changed_files: list[str],
+        category: str,
+        tags: list[str],
         require_tests_ran: bool,
     ) -> Evaluation:
         started = perf_counter()
@@ -461,6 +540,7 @@ class EvaluationService:
                 run=completed_run,
                 expected_status=expected_status,
                 expected_diff_contains=expected_diff_contains,
+                allowed_changed_files=allowed_changed_files,
                 require_tests_ran=require_tests_ran,
             )
             result = Evaluation(
@@ -480,15 +560,19 @@ class EvaluationService:
                     run=completed_run,
                     expected_status=expected_status,
                     expected_diff_contains=expected_diff_contains,
+                    allowed_changed_files=allowed_changed_files,
                     require_tests_ran=require_tests_ran,
                 ),
                 agent_run_id=agent_run_id,
                 provider=settings.llm_provider,
-                model=settings.llm_model,
+                model=self._effective_llm_model(),
                 metadata_json={
                     "metric": "fix_success_rate",
                     "expected_status": expected_status,
                     "expected_diff_contains": expected_diff_contains,
+                    "allowed_changed_files": allowed_changed_files,
+                    "category": category,
+                    "tags": tags,
                     "require_tests_ran": require_tests_ran,
                     "test_command": test_command,
                 },
@@ -510,11 +594,14 @@ class EvaluationService:
                 failure_category="runner_error",
                 agent_run_id=agent_run_id,
                 provider=settings.llm_provider,
-                model=settings.llm_model,
+                model=self._effective_llm_model(),
                 metadata_json={
                     "metric": "fix_success_rate",
                     "expected_status": expected_status,
                     "expected_diff_contains": expected_diff_contains,
+                    "allowed_changed_files": allowed_changed_files,
+                    "category": category,
+                    "tags": tags,
                     "require_tests_ran": require_tests_ran,
                     "test_command": test_command,
                 },
@@ -527,26 +614,104 @@ class EvaluationService:
 
     def _fix_metrics(self, results: list[Evaluation]) -> dict:
         case_count = len(results)
-        passed_count = sum(1 for result in results if result.passed)
-        latencies = [result.latency_ms for result in results if result.latency_ms is not None]
-        tool_calls = [
-            int(result.result_json.get("tool_calls", 0))
+        expectation_match_count = sum(1 for result in results if result.passed)
+        result_payloads = [
+            result.result_json
             for result in results
             if isinstance(result.result_json, dict)
         ]
+        verified_success_count = sum(
+            payload.get("agent_status") == VERIFIED_SUCCESS for payload in result_payloads
+        )
+        verified_fix_at_one_count = sum(
+            payload.get("agent_status") == VERIFIED_SUCCESS
+            and int(payload.get("iterations") or 0) <= 1
+            for payload in result_payloads
+        )
+        verification_results = [
+            payload.get("test_result")
+            for payload in result_payloads
+            if isinstance(payload.get("test_result"), dict)
+        ]
+        baseline_reproduced_count = sum(
+            result.get("baseline_reproduced") is True for result in verification_results
+        )
+        patch_applied_count = sum(
+            result.get("patch_applied") is True for result in verification_results
+        )
+        regression_passed_count = sum(
+            classify_test_result(result.get("regression")) == "passed"
+            for result in verification_results
+        )
+        regression_failed_count = sum(
+            classify_test_result(result.get("regression")) == "failed"
+            for result in verification_results
+        )
+        tests_skipped_count = sum(
+            self._verification_tests_skipped(result) for result in verification_results
+        )
+        latencies = [result.latency_ms for result in results if result.latency_ms is not None]
+        tool_calls = [int(payload.get("tool_calls", 0)) for payload in result_payloads]
+        iterations = [int(payload.get("iterations", 0)) for payload in result_payloads]
+        planner_tokens = [int(payload.get("planner_tokens", 0)) for payload in result_payloads]
+        total_tokens = [int(payload.get("total_tokens", 0)) for payload in result_payloads]
+        cost_rate = settings.evaluation_llm_cost_per_million_tokens_usd
+        estimated_total_cost = (
+            sum(total_tokens) * cost_rate / 1_000_000 if cost_rate is not None else None
+        )
         failures = Counter(
             result.failure_category or "unknown"
             for result in results
             if not result.passed
         )
+        final_verified_fix_rate = (
+            verified_success_count / case_count if case_count else 0.0
+        )
         return {
             "cases": case_count,
-            "passed": passed_count,
-            "failed": case_count - passed_count,
-            "fix_success_rate": passed_count / case_count if case_count else 0.0,
+            "passed": expectation_match_count,
+            "failed": case_count - expectation_match_count,
+            "primary_metric": "final_verified_fix_rate",
+            "verified_successes": verified_success_count,
+            "verified_fix_at_1": (
+                verified_fix_at_one_count / case_count if case_count else 0.0
+            ),
+            "final_verified_fix_rate": final_verified_fix_rate,
+            # Backwards-compatible alias with the same strict verification semantics.
+            "fix_success_rate": final_verified_fix_rate,
+            "baseline_reproduced_rate": (
+                baseline_reproduced_count / case_count if case_count else 0.0
+            ),
+            "patch_apply_rate": patch_applied_count / case_count if case_count else 0.0,
+            "regression_pass_rate": (
+                regression_passed_count / case_count if case_count else 0.0
+            ),
+            "regression_rate": (
+                regression_failed_count / case_count if case_count else 0.0
+            ),
+            "tests_skipped_rate": tests_skipped_count / case_count if case_count else 0.0,
+            "expectation_match_rate": (
+                expectation_match_count / case_count if case_count else 0.0
+            ),
+            "avg_iterations": sum(iterations) / len(iterations) if iterations else 0.0,
             "avg_tool_calls": sum(tool_calls) / len(tool_calls) if tool_calls else 0.0,
+            "avg_planner_tokens": (
+                sum(planner_tokens) / len(planner_tokens) if planner_tokens else 0.0
+            ),
+            "avg_total_tokens": sum(total_tokens) / len(total_tokens) if total_tokens else 0.0,
+            "total_tokens": sum(total_tokens),
+            "estimated_total_cost_usd": estimated_total_cost,
+            "avg_estimated_cost_usd": (
+                estimated_total_cost / case_count
+                if estimated_total_cost is not None and case_count
+                else None
+            ),
+            "cost_estimation_status": "configured" if cost_rate is not None else "not_configured",
             "avg_latency_sec": (sum(latencies) / len(latencies) / 1000) if latencies else 0.0,
+            "p50_latency_sec": self._percentile(latencies, 0.50) / 1000,
+            "p95_latency_sec": self._percentile(latencies, 0.95) / 1000,
             "failure_distribution": dict(failures),
+            "by_category": self._fix_metrics_by_category(results),
         }
 
     def _comparison_warnings(
@@ -1087,8 +1252,34 @@ class EvaluationService:
             if isinstance(count, int | float)
         }
 
-    def _primary_metric_for_task(self, task_type: str) -> str:
-        return "fix_success_rate" if task_type == "fix" else "recall_at_5"
+    def _primary_metric_for_task(self, task_type: str, *, top_k: int = 5) -> str:
+        return "final_verified_fix_rate" if task_type == "fix" else f"recall_at_{top_k}"
+
+    def _primary_metric_for_run(self, run: EvaluationRun) -> str:
+        configured = (run.metrics_json or {}).get("primary_metric")
+        if isinstance(configured, str) and configured:
+            return configured
+        top_k = (run.metrics_json or {}).get("top_k")
+        if not isinstance(top_k, int):
+            top_k = 5
+        return self._primary_metric_for_task(run.task_type, top_k=top_k)
+
+    def _dataset_primary_metric(
+        self,
+        dataset: EvaluationDataset,
+        runs: list[EvaluationRun],
+    ) -> str:
+        if dataset.baseline_run_id:
+            baseline = next(
+                (run for run in runs if run.id == dataset.baseline_run_id),
+                None,
+            )
+            if baseline is not None:
+                return self._primary_metric_for_run(baseline)
+        completed = next((run for run in runs if run.status == "completed"), None)
+        if completed is not None:
+            return self._primary_metric_for_run(completed)
+        return self._primary_metric_for_task(dataset.task_type)
 
     def _history_pass_rate(
         self,
@@ -1210,15 +1401,35 @@ class EvaluationService:
                 return value
         return None
 
-    def _config_snapshot(self) -> dict:
+    def _config_snapshot(self, *, task_type: str, cases: list[dict]) -> dict:
         return {
+            "benchmark_protocol": BENCHMARK_PROTOCOL_VERSION,
+            "task_type": task_type,
+            "code_commit_sha": self._code_commit_sha(),
+            "code_worktree_dirty": self._code_worktree_dirty(),
+            "prompt_bundle_sha256": self._prompt_bundle_sha256(),
+            "dataset_cases_sha256": self._json_sha256(cases),
             "llm_provider": settings.llm_provider,
-            "llm_model": settings.llm_model,
+            "llm_model": self._effective_llm_model(),
+            "llm_model_configured": settings.llm_model,
+            "llm_cost_per_million_tokens_usd": (
+                settings.evaluation_llm_cost_per_million_tokens_usd
+            ),
             "embedding_provider": settings.embedding_provider,
-            "embedding_model": settings.embedding_model,
+            "embedding_model": self._effective_embedding_model(),
+            "embedding_model_configured": settings.embedding_model,
             "embedding_dimension": settings.embedding_dimension,
+            "agent": {
+                "planner_mode": settings.agent_planner_mode,
+                "max_iterations": settings.max_agent_iterations,
+                "max_local_tool_calls": settings.agent_max_local_tool_calls,
+                "max_planner_calls": settings.agent_max_planner_calls,
+                "max_planner_tokens": settings.agent_max_planner_tokens,
+                "max_loop_seconds": settings.agent_max_loop_seconds,
+            },
             "retrieval": {
                 "top_k": settings.retrieval_top_k,
+                "strategy": settings.retrieval_strategy,
                 "min_vector_score": settings.retrieval_min_vector_score,
                 "candidate_multiplier": settings.retrieval_candidate_multiplier,
                 "rerank_enabled": settings.retrieval_rerank_enabled,
@@ -1240,9 +1451,18 @@ class EvaluationService:
             "source": result.source,
         }
 
-    def _retrieval_failure(self, citations: list[dict]) -> str:
+    def _retrieval_failure(
+        self,
+        citations: list[dict],
+        *,
+        expected_file: str,
+        expected_lines: dict | list | None,
+    ) -> str:
         if not citations:
             return "no_retrieval_results"
+        if any(citation.get("file_path") == expected_file for citation in citations):
+            if self._normalize_line_ranges(expected_lines):
+                return "expected_lines_not_retrieved"
         return "expected_file_not_retrieved"
 
     def _get_agent_run(self, run_id: str) -> AgentRun:
@@ -1265,6 +1485,7 @@ class EvaluationService:
         run: AgentRun,
         expected_status: str,
         expected_diff_contains: list[str],
+        allowed_changed_files: list[str],
         require_tests_ran: bool,
     ) -> bool:
         if run.status != expected_status:
@@ -1272,10 +1493,12 @@ class EvaluationService:
         final_diff = run.final_diff or ""
         if any(fragment not in final_diff for fragment in expected_diff_contains):
             return False
-        if expected_status == "success" and require_tests_ran:
-            test_result = run.test_result or {}
-            if not test_result.get("tests_ran"):
-                return False
+        if not self._changed_files_allowed(final_diff, allowed_changed_files):
+            return False
+        # Kept in the request schema for compatibility; callers can no longer weaken success.
+        _ = require_tests_ran
+        if expected_status == VERIFIED_SUCCESS:
+            return verification_evidence_is_complete(run.test_result)
         return True
 
     def _fix_failure(
@@ -1284,6 +1507,7 @@ class EvaluationService:
         run: AgentRun,
         expected_status: str,
         expected_diff_contains: list[str],
+        allowed_changed_files: list[str],
         require_tests_ran: bool,
     ) -> str:
         final_diff = run.final_diff or ""
@@ -1294,36 +1518,357 @@ class EvaluationService:
         ]
         if missing_diff_fragments:
             return "expected_diff_not_found"
+        if not self._changed_files_allowed(final_diff, allowed_changed_files):
+            return "unexpected_file_changed"
 
         test_result = run.test_result or {}
-        if expected_status == "success" and require_tests_ran and not test_result.get("tests_ran"):
-            if test_result.get("skipped_reason"):
-                return "tests_skipped_dependency_install"
-            return "tests_not_run"
+        _ = require_tests_ran
+        if expected_status == VERIFIED_SUCCESS and not verification_evidence_is_complete(
+            test_result
+        ):
+            if run.status == "infra_error":
+                return "verification_infrastructure_error"
+            if run.status == "not_reproduced":
+                return "failure_not_reproduced"
+            targeted_outcome = classify_test_result(test_result.get("targeted"))
+            regression_outcome = classify_test_result(test_result.get("regression"))
+            if "skipped" in {targeted_outcome, regression_outcome}:
+                return "tests_not_run"
+            if "failed" in {targeted_outcome, regression_outcome}:
+                return "tests_failed"
+            return "incomplete_verification_evidence"
 
         if run.status != expected_status:
             if run.status == "failed":
-                if test_result.get("tests_ran"):
+                if classify_test_result(test_result.get("targeted")) == "failed":
                     return "tests_failed"
                 if "patch" in str(test_result.get("stderr", "")).lower():
                     return "patch_apply_failed"
                 if not final_diff:
                     return "no_patch_generated"
                 return "agent_failed"
+            if run.status == "infra_error":
+                return "verification_infrastructure_error"
+            if run.status == "unverified_patch":
+                return "tests_not_run"
+            if run.status == "not_reproduced":
+                return "failure_not_reproduced"
             return "unexpected_status"
 
         return "unknown"
 
+    def _changed_files_allowed(self, diff: str, allowed_changed_files: list[str]) -> bool:
+        if not allowed_changed_files:
+            return True
+        changed_files = set(re.findall(r"^diff --git a/(.+?) b/(.+)$", diff, re.MULTILINE))
+        flattened = {path for pair in changed_files for path in pair}
+        return bool(flattened) and flattened.issubset(set(allowed_changed_files))
+
     def _agent_result_json(self, run: AgentRun) -> dict:
         final_diff = run.final_diff or ""
+        local_tool_calls = sum(
+            1
+            for step in run.steps
+            if step.step_type == "agent_observation"
+            and step.tool_name in LOCAL_AGENT_TOOL_NAMES
+        )
+        mcp_tool_calls = sum(1 for step in run.steps if step.step_type == "tool_call")
+        token_usage = self._agent_token_usage(run)
         return {
             "agent_run_id": run.id,
             "agent_status": run.status,
             "summary": run.final_summary,
             "iterations": run.iterations,
-            "tool_calls": sum(1 for step in run.steps if step.step_type == "tool_call"),
+            "tool_calls": local_tool_calls + mcp_tool_calls,
+            "local_tool_calls": local_tool_calls,
+            "mcp_tool_calls": mcp_tool_calls,
+            "planner_tokens": token_usage["planner_tokens"],
+            "total_tokens": token_usage["total_tokens"],
+            "token_usage_estimated": token_usage["estimated"],
             "steps_by_type": dict(Counter(step.step_type for step in run.steps)),
             "test_result": run.test_result,
             "final_diff_length": len(final_diff),
             "final_diff_preview": final_diff[:12000],
         }
+
+    def _retrieval_case_metrics(
+        self,
+        *,
+        citations: list[dict],
+        expected_file: str,
+        expected_lines: dict | list | None,
+    ) -> dict[str, Any]:
+        expected_ranges = self._normalize_line_ranges(expected_lines)
+        lines_required = bool(expected_ranges)
+        relevances: list[int] = []
+        file_ranks: list[int] = []
+        overlaps: list[float] = []
+        for rank, citation in enumerate(citations, start=1):
+            file_matches = citation.get("file_path") == expected_file
+            if file_matches:
+                file_ranks.append(rank)
+            overlap = (
+                self._citation_line_overlap(citation, expected_ranges)
+                if file_matches and lines_required
+                else (1.0 if file_matches else 0.0)
+            )
+            overlaps.append(overlap)
+            relevances.append(int(file_matches and (not lines_required or overlap > 0)))
+
+        first_relevant_rank = next(
+            (rank for rank, relevant in enumerate(relevances, start=1) if relevant),
+            None,
+        )
+        relevant_count = sum(relevances)
+        discounted_gain = sum(
+            relevant / math.log2(rank + 1)
+            for rank, relevant in enumerate(relevances, start=1)
+        )
+        ideal_gain = sum(
+            1 / math.log2(rank + 1)
+            for rank in range(1, relevant_count + 1)
+        )
+        max_overlap = max(overlaps, default=0.0) if lines_required else None
+        return {
+            "relevant_hit": first_relevant_rank is not None,
+            "first_relevant_rank": first_relevant_rank,
+            "reciprocal_rank": 1 / first_relevant_rank if first_relevant_rank else 0.0,
+            "ndcg": discounted_gain / ideal_gain if ideal_gain else 0.0,
+            "file_hit": bool(file_ranks),
+            "first_file_rank": min(file_ranks) if file_ranks else None,
+            "lines_required": lines_required,
+            "line_hit": bool(max_overlap and max_overlap > 0) if lines_required else None,
+            "line_overlap": max_overlap,
+            "citation_precision": relevant_count / len(citations) if citations else 0.0,
+            "relevant_citations": relevant_count,
+            "citation_count": len(citations),
+        }
+
+    def _normalize_line_ranges(
+        self,
+        expected_lines: dict | list | None,
+    ) -> list[tuple[int, int]]:
+        if expected_lines is None:
+            return []
+        if isinstance(expected_lines, dict):
+            nested = expected_lines.get("ranges")
+            if isinstance(nested, list):
+                return self._normalize_line_ranges(nested)
+            start = expected_lines.get("start_line", expected_lines.get("start"))
+            end = expected_lines.get("end_line", expected_lines.get("end", start))
+            if isinstance(start, int) and isinstance(end, int) and start > 0 and end >= start:
+                return [(start, end)]
+            return []
+        if len(expected_lines) == 2 and all(isinstance(value, int) for value in expected_lines):
+            start, end = expected_lines
+            return [(start, end)] if start > 0 and end >= start else []
+        ranges: list[tuple[int, int]] = []
+        for item in expected_lines:
+            if isinstance(item, dict | list):
+                ranges.extend(self._normalize_line_ranges(item))
+        return ranges
+
+    def _citation_line_overlap(
+        self,
+        citation: dict,
+        expected_ranges: list[tuple[int, int]],
+    ) -> float:
+        start = citation.get("start_line")
+        end = citation.get("end_line")
+        if not isinstance(start, int) or not isinstance(end, int) or end < start:
+            return 0.0
+        expected_line_count = sum(range_end - range_start + 1 for range_start, range_end in expected_ranges)
+        if expected_line_count <= 0:
+            return 0.0
+        overlapping_lines = sum(
+            max(0, min(end, range_end) - max(start, range_start) + 1)
+            for range_start, range_end in expected_ranges
+        )
+        return min(1.0, overlapping_lines / expected_line_count)
+
+    def _rate(
+        self,
+        metrics: list[dict],
+        field: str,
+        *,
+        eligible: str | None = None,
+    ) -> float | None:
+        eligible_metrics = [
+            metric
+            for metric in metrics
+            if eligible is None or metric.get(eligible) is True
+        ]
+        if not eligible_metrics:
+            return None
+        return sum(metric.get(field) is True for metric in eligible_metrics) / len(eligible_metrics)
+
+    def _percentile(self, values: list[int], percentile: float) -> float:
+        if not values:
+            return 0.0
+        ordered = sorted(values)
+        position = (len(ordered) - 1) * percentile
+        lower_index = math.floor(position)
+        upper_index = math.ceil(position)
+        if lower_index == upper_index:
+            return float(ordered[lower_index])
+        fraction = position - lower_index
+        return ordered[lower_index] + (ordered[upper_index] - ordered[lower_index]) * fraction
+
+    def _verification_tests_skipped(self, verification_result: dict) -> bool:
+        outcomes = {
+            classify_test_result(verification_result.get("targeted")),
+            classify_test_result(verification_result.get("regression")),
+        }
+        return bool(outcomes.intersection({"skipped", "not_run"}))
+
+    def _retrieval_metrics_by_category(self, results: list[Evaluation]) -> dict[str, dict]:
+        grouped = self._results_by_category(results)
+        breakdown: dict[str, dict] = {}
+        for category, category_results in grouped.items():
+            metrics = [
+                result.result_json.get("metrics")
+                for result in category_results
+                if isinstance(result.result_json, dict)
+                and isinstance(result.result_json.get("metrics"), dict)
+            ]
+            count = len(category_results)
+            latencies = [
+                result.latency_ms
+                for result in category_results
+                if result.latency_ms is not None
+            ]
+            breakdown[category] = {
+                "cases": count,
+                "recall": sum(result.passed is True for result in category_results) / count,
+                "mrr": self._average(metric.get("reciprocal_rank") for metric in metrics)
+                or 0.0,
+                "ndcg": self._average(metric.get("ndcg") for metric in metrics) or 0.0,
+                "p95_latency_sec": self._percentile(latencies, 0.95) / 1000,
+            }
+        return breakdown
+
+    def _fix_metrics_by_category(self, results: list[Evaluation]) -> dict[str, dict]:
+        grouped = self._results_by_category(results)
+        breakdown: dict[str, dict] = {}
+        for category, category_results in grouped.items():
+            count = len(category_results)
+            payloads = [
+                result.result_json
+                for result in category_results
+                if isinstance(result.result_json, dict)
+            ]
+            verified = sum(
+                payload.get("agent_status") == VERIFIED_SUCCESS for payload in payloads
+            )
+            breakdown[category] = {
+                "cases": count,
+                "final_verified_fix_rate": verified / count,
+                "expectation_match_rate": (
+                    sum(result.passed is True for result in category_results) / count
+                ),
+                "tests_skipped_rate": (
+                    sum(
+                        self._verification_tests_skipped(payload.get("test_result"))
+                        for payload in payloads
+                        if isinstance(payload.get("test_result"), dict)
+                    )
+                    / count
+                ),
+            }
+        return breakdown
+
+    def _results_by_category(
+        self,
+        results: list[Evaluation],
+    ) -> dict[str, list[Evaluation]]:
+        grouped: dict[str, list[Evaluation]] = {}
+        for result in results:
+            raw_metadata = getattr(result, "metadata_json", None)
+            metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
+            category = metadata.get("category")
+            normalized = category if isinstance(category, str) and category else "unspecified"
+            grouped.setdefault(normalized, []).append(result)
+        return dict(sorted(grouped.items()))
+
+    def _agent_token_usage(self, run: AgentRun) -> dict[str, int | bool]:
+        planner_tokens = 0
+        total_tokens = 0
+        estimated = False
+        for step in run.steps:
+            output = step.output_json if isinstance(step.output_json, dict) else {}
+            usage = output.get("llm_usage")
+            if isinstance(usage, dict):
+                step_tokens = usage.get("total_tokens")
+                if isinstance(step_tokens, int) and step_tokens >= 0:
+                    total_tokens += step_tokens
+                estimated = estimated or usage.get("estimated") is True
+            if step.step_type == "agent_plan":
+                step_tokens = output.get("token_usage")
+                if isinstance(step_tokens, int) and step_tokens >= 0:
+                    planner_tokens += step_tokens
+                    if not isinstance(usage, dict):
+                        total_tokens += step_tokens
+                        estimated = True
+        return {
+            "planner_tokens": planner_tokens,
+            "total_tokens": total_tokens,
+            "estimated": estimated,
+        }
+
+    def _prompt_bundle_sha256(self) -> str:
+        provider_name = settings.llm_provider.strip().lower().replace("_", "-")
+        provider_class = (
+            MockLLMProvider if provider_name == "mock" else OpenAICompatibleLLMProvider
+        )
+        prompt_bundle = {
+            "provider": provider_name,
+            "provider_source": inspect.getsource(provider_class),
+            "agent_orchestration_source": inspect.getsource(AgentService),
+            "plan_next_action_schema": plan_next_action_json_schema(),
+        }
+        return self._json_sha256(prompt_bundle)
+
+    def _effective_llm_model(self) -> str:
+        if settings.llm_provider.strip().lower() == "mock":
+            return "mock-rule-based-v1"
+        return settings.llm_model or "provider-default"
+
+    def _effective_embedding_model(self) -> str:
+        if settings.embedding_provider.strip().lower() == "mock":
+            return f"mock-deterministic-{settings.embedding_dimension}d-v1"
+        return settings.embedding_model
+
+    def _json_sha256(self, value: Any) -> str:
+        serialized = json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        )
+        return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+    def _repository_root(self) -> Path:
+        return Path(__file__).resolve().parents[3]
+
+    def _code_commit_sha(self) -> str | None:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=self._repository_root(),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+        return result.stdout.strip() if result.returncode == 0 else None
+
+    def _code_worktree_dirty(self) -> bool | None:
+        result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=self._repository_root(),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+        return bool(result.stdout.strip()) if result.returncode == 0 else None

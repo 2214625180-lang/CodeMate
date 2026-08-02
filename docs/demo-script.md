@@ -81,14 +81,18 @@ Start the run.
 
 Walk through the visible events:
 
-- `plan`: issue parsing
-- `tool_call search_code`: retrieval over indexed chunks
-- `tool_result search_code`: candidate files and symbols
-- `tool_call read_file`: full file context
+- `inspection`: repository and test-command inspection
+- `baseline_test_result`: pre-patch failure reproduction
+- `agent_plan`: the model's schema-validated next action and remaining budget
+- `tool_call search_code` / `find_symbol`: shown when the issue needs discovery; an issue with an explicit path may go directly to `read_file`
+- `tool_result`: candidate files, symbols, or bounded file content
+- `agent_observation`: evidence summary, action path, and no-progress counter
+- `agent_guardrail`: only appears when a duplicate, invalid, over-budget, or unauthorized action is rejected
 - `patch`: generated unified diff
 - `tool_call apply_patch`: patch applied in sandbox workspace
-- `tool_call run_tests`: Docker sandbox test execution
-- `test_result`: stdout, stderr, exit code
+- `targeted_test_result`: post-patch target test evidence
+- `regression_test_result`: regression-suite evidence
+- `verification`: strict terminal verdict and all three evidence phases
 - `final`: final summary
 
 State clearly that hidden chain-of-thought is not shown.
@@ -98,7 +102,7 @@ State clearly that hidden chain-of-thought is not shown.
 Show:
 
 - Diff Viewer: `return a - b` changed to `return a + b`
-- Test Result Panel: passed
+- Test Result Panel: `verified_success` with baseline, targeted, and regression evidence
 - final summary
 
 Submit feedback:

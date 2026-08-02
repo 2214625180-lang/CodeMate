@@ -53,7 +53,7 @@ MCP_CLIENT_SERVERS_JSON=[{"name":"docs","url":"https://mcp.example.com/mcp/","be
 
 ## 动态 Tool Router
 
-启用后，Fix Agent 在本地诊断之后进入受控循环：
+启用后，当本地 Agent Loop 选择 `GeneratePatch` 时，Fix Agent 可先进入外部工具受控循环：
 
 ```text
 Discover Tool Catalog

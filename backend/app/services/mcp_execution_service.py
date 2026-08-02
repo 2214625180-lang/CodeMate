@@ -11,6 +11,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.agent.verification import TERMINAL_AGENT_RUN_STATUSES
+
 from app.core.config import settings
 from app.core.telemetry import mark_span_error, mcp_span
 from app.models.agent_run import AgentRun
@@ -472,7 +474,7 @@ class MCPExecutionService:
     def mark_run_waiting_reconciliation(self, execution: MCPToolExecution) -> None:
         now = datetime.utcnow()
         run = self.db.get(AgentRun, execution.run_id)
-        if run is not None and run.status not in {"success", "failed"}:
+        if run is not None and run.status not in TERMINAL_AGENT_RUN_STATUSES:
             run.status = "waiting_reconciliation"
             run.final_summary = "Agent 正在等待 MCP 执行结果对账。"
             run.failure_reason = None

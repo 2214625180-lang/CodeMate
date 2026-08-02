@@ -6,6 +6,11 @@ class FixAgentState(TypedDict, total=False):
     repo_id: str
     user_input: str
     test_command: str | None
+    resolved_test_command: str | None
+    regression_test_command: str | None
+    inspection_result: dict[str, Any]
+    baseline_test_result: dict[str, Any]
+    diagnostic_test_result: dict[str, Any]
     parsed_issue: dict[str, Any]
     retrieved_chunks: list[dict[str, Any]]
     files: dict[str, str]
@@ -24,9 +29,28 @@ class FixAgentState(TypedDict, total=False):
     mcp_call_cursor: int
     resume_from: str | None
     diagnosis: str
+    current_action: dict[str, Any]
+    action_outcome: dict[str, Any]
+    action_history: list[dict[str, Any]]
+    hypotheses: list[str]
+    evidence: list[dict[str, Any]]
+    evidence_fingerprints: list[str]
+    local_action_fingerprints: list[str]
+    patch_fingerprints: list[str]
+    local_tool_call_count: int
+    local_planner_call_count: int
+    local_planner_token_count: int
+    agent_loop_started_at: str
+    agent_loop_deadline_at: str
+    no_progress_count: int
+    finish_reason: str | None
+    patch_is_duplicate: bool
     patch: str
     apply_result: dict[str, Any]
     test_result: dict[str, Any]
+    targeted_test_result: dict[str, Any]
+    regression_test_result: dict[str, Any]
+    verification_result: dict[str, Any]
     reflection: dict[str, Any]
     iterations: int
     max_iterations: int

@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.agent.verification import TERMINAL_AGENT_RUN_STATUSES
 from app.core.database import SessionLocal, get_db
 from app.models.agent_run import AgentRun
 from app.models.agent_step import AgentStep
@@ -66,8 +67,12 @@ def submit_run_feedback(
 
 def _trace_events(run_id: str) -> Iterator[str]:
     sent_ids: set[str] = set()
-    terminal_statuses = {"success", "failed"}
     allowed_events = {
+        "inspection",
+        "agent_plan",
+        "agent_observation",
+        "agent_guardrail",
+        "checkpoint_resume",
         "plan",
         "tool_call",
         "tool_result",
@@ -76,7 +81,11 @@ def _trace_events(run_id: str) -> Iterator[str]:
         "approval_decision",
         "mcp_execution",
         "patch",
+        "baseline_test_result",
+        "targeted_test_result",
+        "regression_test_result",
         "test_result",
+        "verification",
         "reflection",
         "final",
         "error",
@@ -106,7 +115,7 @@ def _trace_events(run_id: str) -> Iterator[str]:
                 sent_ids.add(step.id)
                 yield _sse(step.step_type, _step_payload(step))
 
-            if run.status in terminal_statuses and len(sent_ids) >= len(
+            if run.status in TERMINAL_AGENT_RUN_STATUSES and len(sent_ids) >= len(
                 [step for step in steps if step.step_type in allowed_events]
             ):
                 return

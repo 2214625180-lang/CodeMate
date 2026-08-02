@@ -67,6 +67,18 @@ export function AgentTimeline({
 }
 
 function titleFor(event: TraceEvent) {
+  if (event.type === "agent_plan") {
+    return `Plan Next Action · ${readPlannedAction(event.output) ?? "planner"}`;
+  }
+  if (event.type === "agent_observation") {
+    return `Agent Observation · ${event.tool_name ?? "local action"}`;
+  }
+  if (event.type === "agent_guardrail") {
+    return `Guardrail · ${event.tool_name ?? "policy"}`;
+  }
+  if (event.type === "checkpoint_resume") {
+    return "Resume From Checkpoint";
+  }
   if (event.type === "tool_call") {
     return `Tool Call · ${event.tool_name ?? "unknown"}`;
   }
@@ -88,8 +100,20 @@ function titleFor(event: TraceEvent) {
   if (event.type === "patch") {
     return "Patch";
   }
-  if (event.type === "test_result") {
-    return "Test Result";
+  if (event.type === "inspection") {
+    return "Inspect Repository";
+  }
+  if (event.type === "baseline_test_result") {
+    return "Reproduce Failure";
+  }
+  if (event.type === "targeted_test_result") {
+    return "Targeted Tests";
+  }
+  if (event.type === "regression_test_result") {
+    return "Regression Checks";
+  }
+  if (event.type === "test_result" || event.type === "verification") {
+    return event.type === "verification" ? "Verification Verdict" : "Test Result";
   }
   if (event.type === "reflection") {
     return "Reflection";
@@ -147,7 +171,13 @@ function bodyFor(
   if (event.type === "patch") {
     return <DiffViewer diff={readDiff(event.output)} />;
   }
-  if (event.type === "test_result") {
+  if (
+    event.type === "baseline_test_result" ||
+    event.type === "targeted_test_result" ||
+    event.type === "regression_test_result" ||
+    event.type === "test_result" ||
+    event.type === "verification"
+  ) {
     return <TestResultPanel result={event.output} />;
   }
   if (event.type === "tool_call" || event.type === "tool_result") {
@@ -326,4 +356,16 @@ function readDiff(value: unknown) {
     return typeof diff === "string" ? diff : "";
   }
   return "";
+}
+
+function readPlannedAction(value: unknown) {
+  if (typeof value !== "object" || value === null || !("action" in value)) {
+    return null;
+  }
+  const planned = (value as { action?: unknown }).action;
+  if (typeof planned !== "object" || planned === null || !("action" in planned)) {
+    return null;
+  }
+  const actionName = (planned as { action?: unknown }).action;
+  return typeof actionName === "string" ? actionName : null;
 }

@@ -30,7 +30,7 @@ const DEFAULT_FIX_CASES = `[
     "repo_id": "replace-with-repo-id",
     "issue": "add function test fails: expected 5 but received -1",
     "test_command": "npm test",
-    "expected_status": "success",
+    "expected_status": "verified_success",
     "expected_diff_contains": ["return a + b"]
   }
 ]`;
@@ -631,10 +631,16 @@ function parseCases(raw: string, taskType: "retrieval" | "fix"): Record<string, 
     } else {
       requireString(item, "repo_id", index);
       requireString(item, "issue", index);
-      const expectedStatus = stringValue(item.expected_status) ?? "success";
-      if (expectedStatus !== "success" && expectedStatus !== "failed") {
-        throw new Error(`Case ${index + 1} expected_status must be success or failed.`);
+      const rawExpectedStatus = stringValue(item.expected_status);
+      const expectedStatus = rawExpectedStatus === "success"
+        ? "verified_success"
+        : rawExpectedStatus ?? "verified_success";
+      if (!isFixExpectedStatus(expectedStatus)) {
+        throw new Error(
+          `Case ${index + 1} expected_status must be a strict verification status.`
+        );
       }
+      item.expected_status = expectedStatus;
     }
 
     return item;
@@ -657,6 +663,16 @@ function requireString(item: Record<string, unknown>, key: string, index: number
 
 function stringValue(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function isFixExpectedStatus(value: string) {
+  return [
+    "verified_success",
+    "unverified_patch",
+    "not_reproduced",
+    "failed",
+    "infra_error"
+  ].some((status) => status === value);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

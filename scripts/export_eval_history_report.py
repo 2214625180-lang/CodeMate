@@ -270,12 +270,15 @@ def row(label: str, value: Any) -> str:
 
 def metric_label(metric_name: Any) -> str:
     labels = {
-        "recall_at_5": "Recall@5",
         "fix_success_rate": "Fix Success Rate",
+        "final_verified_fix_rate": "Final Verified Fix Rate",
         "avg_latency_sec": "Avg Latency",
         "avg_tool_calls": "Avg Tool Calls",
     }
-    return labels.get(str(metric_name), str(metric_name or "n/a"))
+    normalized = str(metric_name)
+    if normalized.startswith("recall_at_") and normalized.removeprefix("recall_at_").isdigit():
+        return f"Recall@{normalized.removeprefix('recall_at_')}"
+    return labels.get(normalized, str(metric_name or "n/a"))
 
 
 def format_percent(value: Any) -> str:

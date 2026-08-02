@@ -260,14 +260,17 @@ def dataset_label(dataset: dict[str, Any]) -> str:
 
 def metric_label(name: Any) -> str:
     labels = {
-        "recall_at_5": "Recall@5",
         "fix_success_rate": "Fix Success Rate",
+        "final_verified_fix_rate": "Final Verified Fix Rate",
         "passed": "Passed",
         "failed": "Failed",
         "avg_latency_sec": "Avg Latency",
         "avg_tool_calls": "Avg Tool Calls",
     }
-    return labels.get(str(name), str(name or "n/a"))
+    normalized = str(name)
+    if normalized.startswith("recall_at_") and normalized.removeprefix("recall_at_").isdigit():
+        return f"Recall@{normalized.removeprefix('recall_at_')}"
+    return labels.get(normalized, str(name or "n/a"))
 
 
 def format_check_result(value: Any) -> str:

@@ -92,7 +92,10 @@ def test_sandbox_qualification_helpers_are_strict_and_deterministic(tmp_path):
     service = SandboxService()
     dependency = service._dependency_install_command(workspace=workspace, command="npm test")
     assert dependency is None
-    assert service._test_shell_command(dependency_command=dependency, command="npm test") == "npm test"
+    assert (
+        service._test_shell_command(dependency_command=dependency, command="npm test")
+        == "npm test"
+    )
 
 
 def test_sandbox_inventory_only_counts_ready_non_terminating_pods():

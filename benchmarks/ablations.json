@@ -1,0 +1,52 @@
+{
+  "schema_version": "codemate-ablation-matrix/v1",
+  "variants": [
+    {
+      "name": "retrieval-vector-only",
+      "task_type": "retrieval",
+      "dataset_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "environment": {"RETRIEVAL_STRATEGY":"vector","RETRIEVAL_RERANK_ENABLED":"false","RETRIEVAL_CONTEXT_EXPANSION_ENABLED":"false"},
+      "expected_config": {"retrieval.strategy":"vector","retrieval.rerank_enabled":false,"retrieval.context_expansion_enabled":false}
+    },
+    {
+      "name": "retrieval-hybrid",
+      "task_type": "retrieval",
+      "dataset_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "environment": {"RETRIEVAL_STRATEGY":"hybrid","RETRIEVAL_RERANK_ENABLED":"false","RETRIEVAL_CONTEXT_EXPANSION_ENABLED":"false"},
+      "expected_config": {"retrieval.strategy":"hybrid","retrieval.rerank_enabled":false,"retrieval.context_expansion_enabled":false}
+    },
+    {
+      "name": "retrieval-hybrid-rerank-context",
+      "task_type": "retrieval",
+      "dataset_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "environment": {"RETRIEVAL_STRATEGY":"hybrid","RETRIEVAL_RERANK_ENABLED":"true","RETRIEVAL_CONTEXT_EXPANSION_ENABLED":"true"},
+      "expected_config": {"retrieval.strategy":"hybrid","retrieval.rerank_enabled":true,"retrieval.context_expansion_enabled":true}
+    },
+    {
+      "name": "fix-single-shot-adaptive",
+      "task_type": "fix",
+      "dataset_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "environment": {"AGENT_PLANNER_MODE":"adaptive","MAX_AGENT_ITERATIONS":"1"},
+      "expected_config": {"agent.planner_mode":"adaptive","agent.max_iterations":1}
+    },
+    {
+      "name": "fix-reflection-adaptive",
+      "task_type": "fix",
+      "dataset_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "environment": {"AGENT_PLANNER_MODE":"adaptive","MAX_AGENT_ITERATIONS":"3"},
+      "expected_config": {"agent.planner_mode":"adaptive","agent.max_iterations":3}
+    },
+    {
+      "name": "fix-reflection-fixed",
+      "task_type": "fix",
+      "dataset_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "environment": {"AGENT_PLANNER_MODE":"fixed","MAX_AGENT_ITERATIONS":"3"},
+      "expected_config": {"agent.planner_mode":"fixed","agent.max_iterations":3}
+    }
+  ],
+  "comparisons": [
+    {"name":"retrieval-strategy","variants":["retrieval-vector-only","retrieval-hybrid","retrieval-hybrid-rerank-context"]},
+    {"name":"reflection-loop","variants":["fix-single-shot-adaptive","fix-reflection-adaptive"]},
+    {"name":"planner-control","variants":["fix-reflection-fixed","fix-reflection-adaptive"]}
+  ]
+}

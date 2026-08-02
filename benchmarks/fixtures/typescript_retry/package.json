@@ -1,0 +1,9 @@
+{
+  "name": "codemate-typescript-retry-fixture",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "test:health": "node --test tests/health.test.js"
+  }
+}

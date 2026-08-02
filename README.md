@@ -7,7 +7,7 @@ CodeMate 是一个小而完整的 AI 代码工程平台。它可以把 TypeScrip
 ## 项目亮点
 
 - 可引用的代码 RAG：AST/SFC 语义分块、关键词/向量混合召回、确定性 rerank、同文件上下文扩展、多仓库 SSE 问答。
-- Agent 修复闭环：LangGraph 串联 parse、retrieve、read、diagnose、patch、test、reflect、final 节点，前端展示 Timeline 和 Diff Viewer。
+- 受控 Agent Loop：模型按 observation 动态选择 SearchCode、ReadFile、ListFiles、FindSymbol、FindReferences、RunTests、GeneratePatch 或 Finish；确定性执行器校验 Schema、白名单、预算和循环停机条件，前端展示真实工具路径、Timeline 和 Diff Viewer。
 - 沙箱验证：临时 workspace、`git apply` 应用补丁、命令白名单、CPU/内存/超时限制、默认 `--network none`，并预留 gVisor 和 Firecracker runner。
 - 评测体系：retrieval/fix 数据集、快照、运行记录、产物、历史对比、CI gate 脚本和 GitHub Actions 集成。
 - Evaluation 安全加固：前端 RBAC + 后端 RBAC、signed proxy identity、nonce replay 防护、分权 service token、key rotation、生产配置校验和后端审计日志。
@@ -20,6 +20,7 @@ CodeMate 是一个小而完整的 AI 代码工程平台。它可以把 TypeScrip
 - [只读 MCP Server](docs/mcp-server.md)
 - [CodeMate 作为 MCP Client](docs/mcp-client.md)
 - [MCP 人机审批与可恢复执行](docs/mcp-approval-workflow.md)
+- [受控 Agent Loop 与持久化 Checkpoint](docs/controlled-agent-loop.md)
 - [MCP 持久化执行账本、幂等与崩溃恢复](docs/mcp-durable-execution.md)
 - [MCP 可观测性、健康监控、熔断与运维 Dashboard](docs/mcp-operations.md)
 - [动态 MCP Server Registry 与 Credential Broker](docs/mcp-registry.md)
@@ -49,7 +50,7 @@ Backend: FastAPI + SQLAlchemy + RQ
   - Chat Service
   - Repo Memory Service
   - CI Service
-  - LangGraph Agent Service
+  - LangGraph Agent Service + PostgreSQL/SQLite Checkpointer
   - Docker Sandbox Service
   - Trace/Feedback APIs
 
@@ -345,17 +346,37 @@ curl -X POST http://localhost:8000/runs/<run_id>/feedback \
 Trace 事件：
 
 ```text
+inspection
+agent_plan
+agent_observation
+agent_guardrail
+checkpoint_resume
 plan
 tool_call
 tool_result
 patch
-test_result
+baseline_test_result
+targeted_test_result
+regression_test_result
+verification
 reflection
 final
 error
 ```
 
 前端 Timeline 只展示可解释事件，不暴露模型隐藏 chain-of-thought。
+
+Agent 会先在原始 workspace 运行测试复现失败，再生成并应用 Patch，随后运行目标测试和回归检查。只有修前测试确实失败、修后两阶段测试都满足 `tests_ran=true && exit_code=0` 时，终态才是 `verified_success`。其余终态明确区分：
+
+| 状态 | 含义 |
+| --- | --- |
+| `verified_success` | 修前复现失败，修后目标测试和回归测试均实际运行并通过 |
+| `unverified_patch` | Patch 可应用，但测试未实际运行 |
+| `not_reproduced` | 修前测试本来就通过 |
+| `failed` | Patch、测试或最大迭代失败 |
+| `infra_error` | 沙箱、依赖、网络或执行节点故障 |
+
+Evaluation 的 `fix_success_rate` 只统计 `verified_success`，不会把 Patch 可应用或测试跳过计为修复成功。
 
 ## PR Review
 
@@ -434,28 +455,47 @@ Admin 用户和团队可以运行 evaluations 并变更 benchmark datasets。Vie
 
 安全敏感的前后端 Evaluation 事件会以 JSONL 写入 `SECURITY_AUDIT_LOG_PATH`，默认路径是 `artifacts/security/events.jsonl`。日志不会记录 password、OAuth code、request body 或 API token。本地可在 `/evaluations/security` 查看最近事件；staging/production 中，前端事件通过内部 ingest API 汇入 PostgreSQL durable outbox，再同时投递到签名 SIEM 和启用 Object Lock 的 S3，本地 JSONL 仅作为应急副本。
 
-从示例创建 `scripts/eval_cases.json`：
+校验固定 fixture commit、数据分层、30 个 retrieval case、20 个 fix case，以及失败/健康对照：
 
 ```bash
-cp scripts/eval_cases.example.json scripts/eval_cases.json
+python scripts/benchmark_suite.py
 ```
 
-运行 retrieval evaluation：
+把 5 个确定性 Git fixture 索引到本地服务，并注册两个不可变 dataset snapshot：
 
 ```bash
-python3 scripts/evaluate_retrieval.py --base-url http://localhost:8000 --cases scripts/eval_cases.json
+python scripts/bootstrap_benchmark.py
 ```
 
-运行 fix evaluation：
+正式数据集位于：
+
+- `benchmarks/datasets/v1/retrieval.json`：30 cases
+- `benchmarks/datasets/v1/fix.json`：20 cases
+- `benchmarks/fixtures/manifest.json`：5 个 fixture 及固定 commit SHA
+
+运行单个数据集的 Evaluation Gate：
 
 ```bash
-python3 scripts/evaluate_fix.py --base-url http://localhost:8000 --cases scripts/eval_cases.json
+python scripts/run_dataset_eval_gate.py \
+  --base-url http://localhost:8000 \
+  --dataset-id aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
 ```
 
 核心指标：
 
-- Retrieval: Recall@5 和平均延迟
-- Fix: Fix Success Rate、平均 tool calls、平均延迟
+- Retrieval：动态 Recall@K、MRR、nDCG、文件命中率、行号 overlap、Citation Precision、p50/p95 延迟
+- Fix：Baseline Reproduced Rate、Verified Fix@1、最终 Verified Fix Rate、Patch Apply Rate、Regression Rate、Tests Skipped Rate、平均迭代/工具调用/Token/成本与 p95 延迟
+
+`expected_lines` 会参与 case 判定：只命中文件但没有命中期望行区间不会通过。成本只有在配置
+`EVALUATION_LLM_COST_PER_MILLION_TOKENS_USD` 后才估算；未配置时 artifact 保持 `null`，不会补猜价格。
+
+三组消融矩阵定义在 `benchmarks/ablations.json`：vector-only vs hybrid vs
+hybrid+rerank/context、single-shot vs reflection、fixed workflow vs adaptive planner。
+`scripts/run_benchmark_matrix.py` 会核对每个部署捕获的 config snapshot，拒绝名实不符的 variant。
+
+当前真实运行结果、限制、模型/provider、prompt hash、代码 commit、dataset snapshot 和完整 artifact
+见 [`benchmarks/results/README.md`](benchmarks/results/README.md)。Fix 消融在没有真实 LLM 凭据时明确为
+`not_run`，不会填写占位百分比。
 
 ## 校验命令
 
@@ -523,7 +563,7 @@ CodeMate: 代码库问答与自动修复 Agent
 
 - 设计并实现 TypeScript/JavaScript/Python 仓库 AST 语义索引流水线，将 chunk 元数据存入 PostgreSQL，将向量存入 Qdrant，用于带文件/行号引用的代码问答。
 - 实现关键词检索、向量检索、repo metadata filter、确定性 rerank 和 same-file context expansion 结合的 hybrid retrieval，降低模型伪造 citation 的概率。
-- 基于 LangGraph 设计代码修复 Agent，包含 parse、retrieve、read、diagnose、patch、test、reflect、final 节点，并实现 bounded retry。
+- 基于 LangGraph 设计受控代码修复 Agent Loop：模型依据 observation 动态选择严格类型的本地工具，执行器强制白名单、参数 Schema、调用/Token/时间预算、重复搜索与重复 Patch 防护，并用数据库 checkpoint 支持节点级恢复。
 - 将 Agent 生成补丁委托给独立 Firecracker/Kubernetes-Kata 执行平面，使用 mTLS、工作负载身份、命令白名单、timeout、资源限制和禁网策略完成验证。
 - 建设 Evaluation Center，支持 retrieval/fix 数据集、快照、运行产物、历史对比和 CI gate 集成。
 - 加固 Evaluation API，支持后端 RBAC、signed proxy identity header、replay nonce protection、scoped service token、key rotation 和 principal-aware audit log。

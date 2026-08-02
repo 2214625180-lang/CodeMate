@@ -102,13 +102,19 @@ export type CIConfig = {
   applied_path: string | null;
 };
 
+export type VerificationStatus =
+  | "verified_success"
+  | "unverified_patch"
+  | "not_reproduced"
+  | "failed"
+  | "infra_error";
+
 export type AgentRunStatus =
   | "pending"
   | "running"
   | "waiting_approval"
   | "waiting_reconciliation"
-  | "success"
-  | "failed";
+  | VerificationStatus;
 
 export type MCPToolApproval = {
   id: string;
@@ -555,7 +561,7 @@ export type FixEvaluationCase = {
   repo_id: string;
   issue: string;
   test_command?: string | null;
-  expected_status?: "success" | "failed";
+  expected_status?: VerificationStatus;
   expected_diff_contains?: string[];
 };
 
@@ -852,6 +858,11 @@ export type EvaluationGateResult = {
 };
 
 export type TraceEventType =
+  | "inspection"
+  | "agent_plan"
+  | "agent_observation"
+  | "agent_guardrail"
+  | "checkpoint_resume"
   | "plan"
   | "tool_call"
   | "tool_result"
@@ -860,7 +871,11 @@ export type TraceEventType =
   | "approval_decision"
   | "mcp_execution"
   | "patch"
+  | "baseline_test_result"
+  | "targeted_test_result"
+  | "regression_test_result"
   | "test_result"
+  | "verification"
   | "reflection"
   | "final"
   | "error";

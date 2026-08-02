@@ -1,5 +1,6 @@
 from app.models.agent_run import AgentRun
 from app.models.agent_step import AgentStep
+from app.models.agent_checkpoint import AgentCheckpoint, AgentCheckpointBlob, AgentCheckpointWrite
 from app.models.code_chunk import CodeChunk
 from app.models.code_file import CodeFile
 from app.models.evaluation import Evaluation
@@ -34,6 +35,9 @@ from app.models.security_audit_delivery import SecurityAuditDelivery
 __all__ = [
     "AgentRun",
     "AgentStep",
+    "AgentCheckpoint",
+    "AgentCheckpointBlob",
+    "AgentCheckpointWrite",
     "CodeChunk",
     "CodeFile",
     "Evaluation",

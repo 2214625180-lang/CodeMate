@@ -70,6 +70,13 @@ def test_local_defaults_signed_browser_identity_to_false(monkeypatch):
     assert settings.signed_browser_identity_required is False
 
 
+def test_agent_loop_budgets_must_be_positive():
+    settings = Settings(_env_file=None, app_env="local", agent_max_local_tool_calls=0)
+
+    with pytest.raises(RuntimeError, match="AGENT_MAX_LOCAL_TOOL_CALLS"):
+        settings.validate_security_config()
+
+
 def test_staging_requires_kms_and_dual_remote_audit_sinks(monkeypatch):
     monkeypatch.setenv("CODEMATE_REQUIRE_SIGNED_BROWSER_IDENTITY", "true")
     with pytest.raises(RuntimeError, match="MCP_REGISTRY_KMS_PROVIDER"):

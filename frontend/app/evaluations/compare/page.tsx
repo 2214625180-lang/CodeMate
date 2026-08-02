@@ -616,21 +616,21 @@ function modelLabel(run: EvaluationRun) {
 
 function metricLabel(name: string) {
   const labels: Record<string, string> = {
-    recall_at_5: "Recall@5",
     fix_success_rate: "Fix success",
+    final_verified_fix_rate: "Final verified fix",
     avg_latency_sec: "Avg latency",
     avg_tool_calls: "Avg tool calls",
     passed: "Passed",
     failed: "Failed"
   };
-  return labels[name] ?? name;
+  return /^recall_at_\d+$/.test(name) ? `Recall@${name.replace("recall_at_", "")}` : labels[name] ?? name;
 }
 
 function formatMetric(name: string, value: number | null) {
   if (value === null) {
     return "n/a";
   }
-  if (name === "recall_at_5" || name === "fix_success_rate") {
+  if (/^recall_at_\d+$/.test(name) || name.endsWith("_rate")) {
     return `${Math.round(value * 100)}%`;
   }
   if (name === "avg_latency_sec") {
@@ -647,7 +647,7 @@ function deltaLabel(metric: EvaluationMetricDelta) {
     return "n/a";
   }
   const prefix = metric.delta > 0 ? "+" : "";
-  if (metric.name === "recall_at_5" || metric.name === "fix_success_rate") {
+  if (/^recall_at_\d+$/.test(metric.name) || metric.name.endsWith("_rate")) {
     return `${prefix}${Math.round(metric.delta * 100)}pp`;
   }
   if (metric.name === "avg_latency_sec") {

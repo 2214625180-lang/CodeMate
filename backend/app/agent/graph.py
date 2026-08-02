@@ -1,22 +1,30 @@
 from app.agent.state import FixAgentState
-
-
-def should_continue(state: FixAgentState) -> str:
-    test_result = state.get("test_result") or {}
-    if test_result.get("passed"):
-        return "final"
-    if state.get("iterations", 0) >= state.get("max_iterations", 3):
-        return "final"
-    return "reflect"
+from app.agent.verification import (
+    route_after_regression_checks,
+    route_after_reproduction,
+    route_after_targeted_tests,
+)
 
 
 def after_reflect(state: FixAgentState) -> str:
-    next_action = (state.get("reflection") or {}).get("next_action")
-    if next_action == "read_more_context":
-        return "retrieve"
-    if next_action == "stop":
+    if state.get("finish_reason"):
         return "final"
-    return "generate"
+    return "plan"
+
+
+def after_local_action(state: FixAgentState) -> str:
+    route = (state.get("action_outcome") or {}).get("route")
+    if route == "generate":
+        return "mcp"
+    if route == "final":
+        return "final"
+    return "plan"
+
+
+def after_patch_generation(state: FixAgentState) -> str:
+    if state.get("patch_is_duplicate"):
+        return "plan"
+    return "apply"
 
 
 def after_mcp_plan(state: FixAgentState) -> str:
@@ -49,14 +57,15 @@ def graph_entry(state: FixAgentState) -> str:
     return "start"
 
 
-def build_fix_graph(nodes: dict):
+def build_fix_graph(nodes: dict, *, checkpointer=None):
     from langgraph.graph import END, StateGraph
 
     graph = StateGraph(FixAgentState)
-    graph.add_node("ParseIssue", nodes["parse_issue"])
-    graph.add_node("RetrieveContext", nodes["retrieve_context"])
-    graph.add_node("ReadFiles", nodes["read_files"])
-    graph.add_node("Diagnose", nodes["diagnose"])
+    graph.add_node("InspectRepository", nodes["inspect_repository"])
+    graph.add_node("ReproduceFailure", nodes["reproduce_failure"])
+    graph.add_node("InitializeAgentLoop", nodes["initialize_agent_loop"])
+    graph.add_node("PlanNextAction", nodes["plan_next_action"])
+    graph.add_node("ExecuteLocalAction", nodes["execute_local_action"])
     graph.add_node("PlanMCPTools", nodes["plan_mcp_tools"])
     graph.add_node("CallMCPTools", nodes["call_mcp_tools"])
     graph.add_node("ObserveMCP", nodes["observe_mcp"])
@@ -64,18 +73,28 @@ def build_fix_graph(nodes: dict):
     graph.add_node("PauseForReconciliation", nodes["pause_for_reconciliation"])
     graph.add_node("GeneratePatch", nodes["generate_patch"])
     graph.add_node("ApplyPatch", nodes["apply_patch"])
-    graph.add_node("RunTests", nodes["run_tests"])
+    graph.add_node("TargetedTests", nodes["targeted_tests"])
+    graph.add_node("RegressionChecks", nodes["regression_checks"])
     graph.add_node("Reflect", nodes["reflect"])
     graph.add_node("FinalAnswer", nodes["final_answer"])
 
     graph.set_conditional_entry_point(
         graph_entry,
-        {"start": "ParseIssue", "call": "CallMCPTools", "observe": "ObserveMCP"},
+        {"start": "InspectRepository", "call": "CallMCPTools", "observe": "ObserveMCP"},
     )
-    graph.add_edge("ParseIssue", "RetrieveContext")
-    graph.add_edge("RetrieveContext", "ReadFiles")
-    graph.add_edge("ReadFiles", "Diagnose")
-    graph.add_edge("Diagnose", "PlanMCPTools")
+    graph.add_edge("InspectRepository", "ReproduceFailure")
+    graph.add_conditional_edges(
+        "ReproduceFailure",
+        route_after_reproduction,
+        {"continue": "InitializeAgentLoop", "final": "FinalAnswer"},
+    )
+    graph.add_edge("InitializeAgentLoop", "PlanNextAction")
+    graph.add_edge("PlanNextAction", "ExecuteLocalAction")
+    graph.add_conditional_edges(
+        "ExecuteLocalAction",
+        after_local_action,
+        {"plan": "PlanNextAction", "mcp": "PlanMCPTools", "final": "FinalAnswer"},
+    )
     graph.add_conditional_edges(
         "PlanMCPTools",
         after_mcp_plan,
@@ -97,17 +116,30 @@ def build_fix_graph(nodes: dict):
         after_mcp_observe,
         {"plan": "PlanMCPTools", "generate": "GeneratePatch"},
     )
-    graph.add_edge("GeneratePatch", "ApplyPatch")
-    graph.add_edge("ApplyPatch", "RunTests")
     graph.add_conditional_edges(
-        "RunTests",
-        should_continue,
+        "GeneratePatch",
+        after_patch_generation,
+        {"apply": "ApplyPatch", "plan": "PlanNextAction"},
+    )
+    graph.add_edge("ApplyPatch", "TargetedTests")
+    graph.add_conditional_edges(
+        "TargetedTests",
+        route_after_targeted_tests,
+        {
+            "regression": "RegressionChecks",
+            "reflect": "Reflect",
+            "final": "FinalAnswer",
+        },
+    )
+    graph.add_conditional_edges(
+        "RegressionChecks",
+        route_after_regression_checks,
         {"reflect": "Reflect", "final": "FinalAnswer"},
     )
     graph.add_conditional_edges(
         "Reflect",
         after_reflect,
-        {"retrieve": "RetrieveContext", "generate": "GeneratePatch", "final": "FinalAnswer"},
+        {"plan": "PlanNextAction", "final": "FinalAnswer"},
     )
     graph.add_edge("FinalAnswer", END)
-    return graph.compile()
+    return graph.compile(checkpointer=checkpointer)

@@ -1,0 +1,51 @@
+{
+  "schema_version": "codemate-fixtures/v1",
+  "commit_identity": {
+    "name": "CodeMate Benchmark",
+    "email": "benchmark@codemate.local",
+    "timestamp": "2026-01-01T00:00:00+00:00",
+    "message": "CodeMate benchmark fixture v1"
+  },
+  "repositories": [
+    {
+      "fixture": "python_cart",
+      "repo_id": "11111111-1111-4111-8111-111111111111",
+      "commit_sha": "c131fa19113c1e4199064f6b51e8c35b774b8ee8",
+      "languages": ["Python"],
+      "test_command": "python -m unittest discover",
+      "health_test_command": "python -m unittest tests.test_health"
+    },
+    {
+      "fixture": "python_async_session",
+      "repo_id": "22222222-2222-4222-8222-222222222222",
+      "commit_sha": "8d990087fc0e382f1d0022c3d0a34cff06532442",
+      "languages": ["Python"],
+      "test_command": "python -m unittest discover",
+      "health_test_command": "python -m unittest tests.test_health"
+    },
+    {
+      "fixture": "typescript_retry",
+      "repo_id": "33333333-3333-4333-8333-333333333333",
+      "commit_sha": "c1a177e1f59d21849be606b3f3273e34e3020d91",
+      "languages": ["TypeScript", "JavaScript"],
+      "test_command": "npm test",
+      "health_test_command": "npm run test:health"
+    },
+    {
+      "fixture": "javascript_config",
+      "repo_id": "44444444-4444-4444-8444-444444444444",
+      "commit_sha": "abaf606d6300c091e24bfdf8e6eb6b40231db2f9",
+      "languages": ["JavaScript"],
+      "test_command": "npm test",
+      "health_test_command": "npm run test:health"
+    },
+    {
+      "fixture": "vue_user_label",
+      "repo_id": "55555555-5555-4555-8555-555555555555",
+      "commit_sha": "19804299fedd8aaa7db19ea85c25d8fc39dbcba4",
+      "languages": ["Vue", "TypeScript", "JavaScript"],
+      "test_command": "npm test",
+      "health_test_command": "npm run test:health"
+    }
+  ]
+}

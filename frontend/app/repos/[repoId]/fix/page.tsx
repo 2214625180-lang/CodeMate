@@ -24,6 +24,11 @@ import type {
 } from "@/lib/types";
 
 const TRACE_EVENTS: TraceEventType[] = [
+  "inspection",
+  "agent_plan",
+  "agent_observation",
+  "agent_guardrail",
+  "checkpoint_resume",
   "plan",
   "tool_call",
   "tool_result",
@@ -32,7 +37,11 @@ const TRACE_EVENTS: TraceEventType[] = [
   "approval_decision",
   "mcp_execution",
   "patch",
+  "baseline_test_result",
+  "targeted_test_result",
+  "regression_test_result",
   "test_result",
+  "verification",
   "reflection",
   "final",
   "error"
@@ -66,7 +75,14 @@ export default function RepoFixPage() {
   }, [events]);
 
   const latestTest = useMemo(() => {
-    return [...events].reverse().find((event) => event.type === "test_result")?.output ?? null;
+    const testEvents: TraceEventType[] = [
+      "verification",
+      "regression_test_result",
+      "targeted_test_result",
+      "baseline_test_result",
+      "test_result"
+    ];
+    return [...events].reverse().find((event) => testEvents.includes(event.type))?.output ?? null;
   }, [events]);
 
   useEffect(() => {
@@ -319,7 +335,9 @@ export default function RepoFixPage() {
           </section>
           <section>
             <h2 className="mb-3 text-lg font-semibold text-slate-950">Tests</h2>
-            <TestResultPanel result={run?.test_result ?? latestTest} />
+            <TestResultPanel
+              result={run ? { ...(run.test_result ?? {}), status: run.status } : latestTest}
+            />
           </section>
           {run ? (
             <section className="rounded-lg border border-border bg-white p-4">

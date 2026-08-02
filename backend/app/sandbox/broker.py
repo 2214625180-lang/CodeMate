@@ -110,13 +110,12 @@ def execute_container(request: SandboxTestRequest, workspace: Path) -> TestResul
             runtime=request.runtime,
             timeout_seconds=request.timeout_seconds,
         )
-        return TestResult(
-            passed=completed.passed,
+        return SandboxService().test_result_from_execution(
+            reported_passed=completed.passed,
             exit_code=completed.exit_code,
             stdout=completed.stdout,
             stderr=completed.stderr,
             command=request.command,
-            tests_ran=True,
             timed_out=completed.timed_out,
             runtime=completed.backend,
         )

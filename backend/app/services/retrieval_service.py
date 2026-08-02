@@ -87,10 +87,20 @@ class RetrievalService:
         limit = top_k or settings.retrieval_top_k
         candidate_limit = max(limit * settings.retrieval_candidate_multiplier, limit)
         terms = self.rewrite_query(query)
+        strategy = settings.retrieval_strategy.strip().lower()
+        if strategy not in {"vector", "hybrid"}:
+            raise ValueError(
+                "RETRIEVAL_STRATEGY must be either 'vector' or 'hybrid'"
+            )
 
         merged: dict[str, RetrievalResult] = {}
-        for result in self._keyword_search(scoped_repo_ids, terms, limit=candidate_limit * 2):
-            merged[result.chunk.id] = result
+        if strategy == "hybrid":
+            for result in self._keyword_search(
+                scoped_repo_ids,
+                terms,
+                limit=candidate_limit * 2,
+            ):
+                merged[result.chunk.id] = result
 
         for result in self._vector_search(scoped_repo_ids, query, terms, limit=candidate_limit):
             existing = merged.get(result.chunk.id)

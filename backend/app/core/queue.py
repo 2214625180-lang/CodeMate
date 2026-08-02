@@ -2,7 +2,7 @@ from datetime import timedelta
 import time
 
 from redis import Redis
-from rq import Queue
+from rq import Queue, Retry
 
 from app.core.config import settings
 from app.workers.jobs import (
@@ -34,7 +34,12 @@ def enqueue_repository_index(repo_id: str, *, full: bool = False) -> str:
 
 
 def enqueue_agent_run(run_id: str) -> str:
-    job = get_index_queue().enqueue(run_agent_job, run_id, job_timeout=900)
+    job = get_index_queue().enqueue(
+        run_agent_job,
+        run_id,
+        job_timeout=900,
+        retry=Retry(max=3, interval=[5, 30, 120]),
+    )
     return job.id
 
 

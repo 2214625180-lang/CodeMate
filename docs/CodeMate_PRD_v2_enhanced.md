@@ -293,30 +293,29 @@ AuthProvider 被哪些组件依赖？
 #### Agent 核心流程
 
 ```text
-ParseIssue
-→ RetrieveContext
-→ ReadFiles
-→ Diagnose
+InspectRepository
+→ ReproduceFailure
+→ PlanNextAction ↔ ExecuteLocalAction
 → GeneratePatch
 → ApplyPatch
-→ RunTests
-→ 判断是否通过
-    ├── 通过：输出最终 diff 与解释
-    └── 失败：Reflect 后重新检索或重新生成 patch，最多 N 轮
+→ TargetedTests
+→ RegressionChecks
+→ Reflect / FinalAnswer
 ```
 
 #### LangGraph 状态机设计
 
 | 节点 | 作用 | 输入 | 输出 |
 |---|---|---|---|
-| `ParseIssue` | 解析报错与任务目标 | 用户输入 | 错误类型、关键词、可能文件 |
-| `RetrieveContext` | 检索相关代码 | query、repo_id | candidate chunks |
-| `ReadFiles` | 读取完整文件上下文 | file_path | file content |
-| `Diagnose` | 判断可能根因 | issue + context | root cause summary |
+| `InspectRepository` | 识别仓库与测试配置 | workspace + request | resolved commands |
+| `ReproduceFailure` | Patch 前复现原始失败 | original workspace | baseline evidence |
+| `PlanNextAction` | 根据 observation 选择一个严格类型动作 | issue + state + budgets | Pydantic action union |
+| `ExecuteLocalAction` | 校验白名单、Schema、预算与重复调用后执行 | structured action | observation + evidence |
 | `GeneratePatch` | 生成标准 diff | diagnosis + files | unified diff |
 | `ApplyPatch` | 应用 patch | diff | apply result |
-| `RunTests` | 沙箱执行测试 | repo workspace | test result |
-| `Reflect` | 失败反思 | failed diff + test output | new strategy |
+| `TargetedTests` | 运行目标测试 | patched workspace | targeted evidence |
+| `RegressionChecks` | 运行回归检查 | patched workspace | regression evidence |
+| `Reflect` | 失败结果写入 evidence 并回滚 workspace | failed diff + test output | new planner observation |
 | `FinalAnswer` | 输出最终结果 | diff + trace | summary + patch |
 
 #### 工具集设计
@@ -326,6 +325,8 @@ ParseIssue
 | `search_code(query, repo_id)` | 搜索相关代码 chunk | 混合检索 |
 | `read_file(path, start_line?, end_line?)` | 读取文件内容 | 控制读取范围 |
 | `list_files(pattern?)` | 查看仓库文件结构 | 避免盲目猜文件 |
+| `find_symbol(symbol)` | 精确定位符号定义 | 基于索引 metadata |
+| `find_references(symbol)` | 查找符号引用 | 有界候选与标识符边界过滤 |
 | `apply_patch(diff)` | 应用统一 diff | 失败时返回错误 |
 | `run_tests(command?)` | 执行测试命令 | Docker 沙箱中运行 |
 | `git_diff()` | 查看当前修改 | 用于最终输出 |
@@ -341,7 +342,7 @@ ParseIssue
 → 决定下一步：重新检索 / 读取更多文件 / 重新生成 patch / 放弃并说明原因
 ```
 
-默认最大重试次数：`max_iterations = 3`。
+默认最大 Patch 重试次数为 3；Planner 同时受工具调用、Planner 调用、Token、总时间、单次读取行数与连续无进展次数约束。重复搜索与重复 Patch 会被 fingerprint guardrail 拒绝。Graph 的普通节点使用数据库 checkpointer，每个 super-step 后均可恢复。
 
 ---
 
@@ -397,7 +398,10 @@ Agent 生成的代码不能直接在宿主机执行。代码仓库本身也可�
 
 ```ts
 export type AgentTraceEvent =
-  | { type: 'plan'; content: string; createdAt: string }
+  | { type: 'agent_plan'; action: PlanNextAction; budget: unknown; createdAt: string }
+  | { type: 'agent_observation'; action: string; evidenceId?: string; createdAt: string }
+  | { type: 'agent_guardrail'; action: string; reason: string; createdAt: string }
+  | { type: 'checkpoint_resume'; nextNodes: string[]; createdAt: string }
   | { type: 'tool_call'; toolName: string; input: unknown; createdAt: string }
   | { type: 'tool_result'; toolName: string; output: unknown; durationMs: number; createdAt: string }
   | { type: 'patch'; diff: string; createdAt: string }
@@ -783,10 +787,10 @@ Agent 自动修复成功率是多少？
 | 指标 | 含义 |
 |---|---|
 | Recall@5 | 前 5 个检索结果是否包含目标代码块 |
-| Citation Accuracy | 回答引用的文件和行号是否正确 |
-| Fix Success Rate | Agent 生成 patch 后测试通过比例 |
-| First Attempt Success Rate | 首轮修复成功率 |
-| Reflection Improvement | 反思重试后成功率提升 |
+| Citation Precision / Line Overlap | 检索引用中相关 citation 比例与期望行区间覆盖率 |
+| Final Verified Fix Rate | 修前复现失败、Patch 应用、修后目标测试与回归测试实际执行并通过的比例 |
+| Verified Fix@1 | 第一轮即满足完整 verification evidence 的比例 |
+| Reflection Improvement | 最终 Verified Fix Rate 相对 Verified Fix@1 的变化 |
 | Avg Tool Calls | 平均工具调用次数 |
 | Avg Latency | 平均任务耗时 |
 | Avg Token Cost | 平均 token 消耗 |
@@ -795,15 +799,17 @@ Agent 自动修复成功率是多少？
 
 建议至少做两个对比：
 
-1. **固定长度切分 vs AST 语义分块**：对比 Recall@5 和引用准确率。
-2. **无反思修复 vs 反思重试修复**：对比 Fix Success Rate。
+1. **vector-only vs hybrid vs hybrid + rerank/context**：对比动态 Recall@K、MRR、nDCG 和引用准确率。
+2. **无反思修复 vs 反思重试修复**：对比 Verified Fix@1 与最终 Verified Fix Rate。
+3. **固定 workflow vs adaptive planner**：对比最终 Verified Fix Rate、工具路径、成本与 p95 延迟。
 
 ### 11.5 简历中如何使用评测结果
 
-未完成真实评测前，不写虚假的百分比。完成后可以写：
+未完成真实评测前，不写虚假的百分比。完成后从带 model、prompt hash、commit SHA 和 dataset
+snapshot 的 artifact 自动生成简历表述，不在文档中保留待替换百分比：
 
 ```text
-在 30 个自建 Bug Case 上进行评估，Agent 首轮修复成功率达到 XX%，经过反思重试后提升至 XX%；相比固定长度切分，AST 语义分块使 Recall@5 提升 XX%。
+在固定版本 benchmark 上执行三组消融；具体 Recall@K、Verified Fix@1 和最终 Verified Fix Rate 以 benchmarks/results 下对应 artifact 的实测值为准。
 ```
 
 ---
@@ -869,8 +875,9 @@ Qdrant 中能查询到对应向量点。
 
 交付目标：
 
-- 使用 LangGraph 实现 ParseIssue、RetrieveContext、ReadFiles、GeneratePatch、RunTests、Reflect 节点。
-- 实现 search_code、read_file、apply_patch、run_tests、git_diff 工具。
+- 使用 LangGraph 实现受控 `PlanNextAction ↔ ExecuteLocalAction` 循环以及严格的修前复现、修后双阶段验证。
+- 实现 search_code、read_file、list_files、find_symbol、find_references、run_tests 等模型可选动作；Patch 应用与最终验证保持确定性。
+- 使用数据库 LangGraph checkpointer 和 RQ 退避重试支持 Worker 故障恢复。
 - Docker 沙箱中执行测试。
 - 支持最多 3 轮失败反思重试。
 
@@ -989,7 +996,7 @@ CodeMate 代码库智能问答与自动修复 Agent
 
 - 设计并实现面向 TypeScript/Python 仓库的代码索引管道，基于 AST 将函数、类、组件切分为语义 chunk，并记录文件路径、起止行号、符号名称、imports/exports 等 metadata，用于精准代码问答与溯源引用。
 - 实现关键词检索 + 向量检索 + metadata 过滤 + rerank 的混合检索策略，解决代码场景下函数名、报错栈、文件路径等精确匹配召回不稳定的问题。
-- 基于 LangGraph 构建 Bug 自动修复 Agent，将任务拆分为报错解析、代码检索、文件读取、patch 生成、测试验证、失败反思等节点，支持多轮修复重试。
+- 基于 LangGraph 构建受控 Bug 修复 Agent Loop，由模型根据 observation 动态选择严格类型的代码工具，执行器强制 Schema、白名单、调用/Token/时间预算、重复调用与无进展停机策略，并以数据库 checkpoint 支持节点级故障恢复。
 - 通过 Docker 沙箱隔离执行 Agent 生成的 patch，配置网络禁用、资源限制、超时终止和临时工作目录，避免直接采信 LLM 输出。
 - 基于 SSE 实现 Agent 执行轨迹实时可视化，前端展示 Plan、Tool Call、Observation、Patch Diff、Test Result 等事件，提升修复过程透明度。
 ```
@@ -997,8 +1004,8 @@ CodeMate 代码库智能问答与自动修复 Agent
 ### 16.2 有数据版本
 
 ```text
-- 在 30 个自建代码问答与 Bug 修复任务上进行评估，统计 Recall@5、Citation Accuracy、Fix Success Rate 和平均工具调用次数；相比固定长度分块，AST 语义分块使检索 Recall@5 提升 XX%。
-- 在 20 个自建 Bug Case 中，Agent 首轮修复成功率达到 XX%，经过 Reflect 重试后成功率提升至 XX%。
+- 只引用 `benchmarks/results` 中已完成 artifact 的动态 Recall@K、MRR、nDCG、Citation Precision、Verified Fix@1、最终 Verified Fix Rate、成本和 p95 延迟。
+- 简历数字必须同时保留模型/provider、prompt hash、代码 commit、dataset snapshot 和 artifact 链接；`not_run` 的 Fix 消融不能写成项目成绩。
 ```
 
 注意：没有真实测试前，不要写百分比。
@@ -1054,4 +1061,3 @@ CodeMate 的核心不是“做很多功能”，而是先跑通一个有说服�
 ```
 
 完成 P0 后，这个项目已经足够写进简历，并且比普通 AI 写作、AI 聊天、知识库问答项目更有 Agent 深度。P1/P2 可以作为后续迭代，不建议在未完成前写成已实现能力。
-

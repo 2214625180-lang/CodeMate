@@ -1,16 +1,27 @@
 {
+  "$comment": "Runnable 30+20 case datasets live in benchmarks/datasets/v1. This file demonstrates the accepted CLI shape with real fixed fixture IDs.",
   "retrieval": [
     {
-      "repo_id": "replace-with-repo-id",
-      "question": "add 函数在哪里？",
-      "expected_file": "src/math.js"
+      "case_id": "ret-py-cart-symbol-total",
+      "repo_id": "11111111-1111-4111-8111-111111111111",
+      "question": "Where is calculate_total implemented?",
+      "expected_file": "src/cart.py",
+      "expected_lines": [15, 20],
+      "category": "symbol_location",
+      "tags": ["python", "symbol"]
     }
   ],
   "fix": [
     {
-      "repo_id": "replace-with-repo-id",
-      "issue": "add function test fails: expected 5 but received -1",
-      "test_command": "npm test"
+      "case_id": "fix-py-cart-symbol",
+      "repo_id": "11111111-1111-4111-8111-111111111111",
+      "issue": "calculate_total subtracts tax instead of adding it.",
+      "test_command": "python -m unittest discover",
+      "expected_status": "verified_success",
+      "expected_diff_contains": ["diff --git a/src/cart.py b/src/cart.py"],
+      "allowed_changed_files": ["src/cart.py"],
+      "category": "symbol_location",
+      "tags": ["python", "arithmetic"]
     }
   ]
 }

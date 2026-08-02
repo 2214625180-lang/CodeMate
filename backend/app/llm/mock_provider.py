@@ -1,7 +1,17 @@
 from collections.abc import Iterator
 import difflib
 import re
+from typing import Any
 
+from app.agent.actions import (
+    FindSymbol,
+    Finish,
+    GeneratePatch,
+    ListFiles,
+    PlanNextAction,
+    ReadFile,
+    SearchCode,
+)
 from app.llm.base import BaseLLMProvider, LLMContext
 
 
@@ -67,6 +77,93 @@ class MockLLMProvider(BaseLLMProvider):
                 return self._unified_diff(file_path, content, updated)
 
         return ""
+
+    def plan_next_action(
+        self,
+        *,
+        issue: str,
+        context: dict[str, Any],
+    ) -> tuple[PlanNextAction, int]:
+        history = list(context.get("action_history") or [])
+        files = dict(context.get("files") or {})
+        retrieved = list(context.get("retrieved_chunks") or [])
+        token_estimate = max(1, (len(issue) + len(str(history[-8:]))) // 4)
+        base = {
+            "hypothesis": "The defect is located near the symbols or files named by the issue.",
+            "rationale": "Gather the smallest concrete repository evidence needed for a safe patch.",
+        }
+
+        if self._extract_embedded_diff(issue):
+            return GeneratePatch(action="GeneratePatch", **base), token_estimate
+
+        if not history:
+            paths = re.findall(r"[\w./@-]+\.(?:ts|tsx|js|jsx|py|vue)", issue)
+            if paths:
+                return (
+                    ReadFile(action="ReadFile", path=paths[0], start_line=1, end_line=400, **base),
+                    token_estimate,
+                )
+            symbol = self._issue_symbol(issue)
+            if symbol:
+                return FindSymbol(action="FindSymbol", symbol=symbol, **base), token_estimate
+            return (
+                SearchCode(action="SearchCode", query=issue[:2_000], top_k=6, **base),
+                token_estimate,
+            )
+
+        last_action = str(history[-1].get("action") or "")
+        if last_action in {"SearchCode", "FindSymbol", "FindReferences"}:
+            for chunk in retrieved:
+                path = chunk.get("file_path") if isinstance(chunk, dict) else None
+                if isinstance(path, str) and path not in files:
+                    return (
+                        ReadFile(
+                            action="ReadFile",
+                            path=path,
+                            start_line=max(1, int(chunk.get("start_line") or 1) - 80),
+                            end_line=int(chunk.get("end_line") or 320) + 120,
+                            **base,
+                        ),
+                        token_estimate,
+                    )
+            return ListFiles(action="ListFiles", pattern=None, **base), token_estimate
+
+        if last_action == "ListFiles":
+            evidence = list(context.get("evidence") or [])
+            if evidence:
+                summary = str(evidence[-1].get("summary") or "")
+                match = re.search(r":\s*([^,]+)", summary)
+                if match and match.group(1).strip() != "no paths":
+                    return (
+                        ReadFile(
+                            action="ReadFile",
+                            path=match.group(1).strip(),
+                            start_line=1,
+                            end_line=400,
+                            **base,
+                        ),
+                        token_estimate,
+                    )
+
+        if files and last_action != "GeneratePatch":
+            return GeneratePatch(action="GeneratePatch", **base), token_estimate
+
+        return (
+            Finish(
+                action="Finish",
+                reason="mock_planner_has_no_new_evidence_path",
+                **base,
+            ),
+            token_estimate,
+        )
+
+    @staticmethod
+    def _issue_symbol(issue: str) -> str | None:
+        for pattern in (r"`([A-Za-z_$][\w$]*)`", r"\b([A-Za-z_$][\w$]*)\(\)"):
+            match = re.search(pattern, issue)
+            if match:
+                return match.group(1)
+        return None
 
     def plan_mcp_tools(
         self,
@@ -216,8 +313,8 @@ class MockLLMProvider(BaseLLMProvider):
     def _unified_diff(self, file_path: str, original: str, updated: str) -> str:
         return "".join(
             difflib.unified_diff(
-                original.splitlines(keepends=True),
-                updated.splitlines(keepends=True),
+                [f"{line}\n" for line in original.splitlines()],
+                [f"{line}\n" for line in updated.splitlines()],
                 fromfile=f"a/{file_path}",
                 tofile=f"b/{file_path}",
             )

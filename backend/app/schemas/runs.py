@@ -9,8 +9,11 @@ AgentRunStatus = Literal[
     "running",
     "waiting_approval",
     "waiting_reconciliation",
-    "success",
+    "verified_success",
+    "unverified_patch",
+    "not_reproduced",
     "failed",
+    "infra_error",
 ]
 FeedbackStatus = Literal["accepted", "rejected", "modified"]
 

@@ -110,8 +110,15 @@ def normalize_cases(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "repo_id": case["repo_id"],
                 "issue": case["issue"],
                 "test_command": case.get("test_command"),
-                "expected_status": case.get("expected_status", "success"),
+                "expected_status": (
+                    "verified_success"
+                    if case.get("expected_status") == "success"
+                    else case.get("expected_status", "verified_success")
+                ),
                 "expected_diff_contains": case.get("expected_diff_contains", []),
+                "allowed_changed_files": case.get("allowed_changed_files", []),
+                "category": case.get("category", "unspecified"),
+                "tags": case.get("tags", []),
             }
         )
     return normalized
@@ -124,8 +131,18 @@ def to_report(evaluation_run: dict[str, Any]) -> dict[str, Any]:
         "status": evaluation_run.get("status"),
         "cases": evaluation_run.get("case_count", 0),
         "fix_success_rate": metrics.get("fix_success_rate", 0.0),
+        "verified_fix_at_1": metrics.get("verified_fix_at_1", 0.0),
+        "final_verified_fix_rate": metrics.get("final_verified_fix_rate", 0.0),
+        "baseline_reproduced_rate": metrics.get("baseline_reproduced_rate", 0.0),
+        "patch_apply_rate": metrics.get("patch_apply_rate", 0.0),
+        "regression_rate": metrics.get("regression_rate", 0.0),
+        "tests_skipped_rate": metrics.get("tests_skipped_rate", 0.0),
+        "avg_iterations": metrics.get("avg_iterations", 0.0),
         "avg_tool_calls": metrics.get("avg_tool_calls", 0.0),
+        "avg_total_tokens": metrics.get("avg_total_tokens", 0.0),
+        "estimated_total_cost_usd": metrics.get("estimated_total_cost_usd"),
         "avg_latency_sec": metrics.get("avg_latency_sec", 0.0),
+        "p95_latency_sec": metrics.get("p95_latency_sec", 0.0),
         "failure_distribution": metrics.get("failure_distribution", {}),
         "results": [result_summary(result) for result in evaluation_run.get("results", [])],
     }

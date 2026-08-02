@@ -283,8 +283,8 @@ def dataset_label(run: dict[str, Any]) -> str:
 
 def metric_label(key: str) -> str:
     labels = {
-        "recall_at_5": "Recall@5",
         "fix_success_rate": "Fix Success Rate",
+        "final_verified_fix_rate": "Final Verified Fix Rate",
         "avg_latency_sec": "Avg Latency",
         "avg_tool_calls": "Avg Tool Calls",
         "passed": "Passed",
@@ -292,11 +292,17 @@ def metric_label(key: str) -> str:
         "cases": "Cases",
         "top_k": "Top K",
     }
+    if key.startswith("recall_at_") and key.removeprefix("recall_at_").isdigit():
+        return f"Recall@{key.removeprefix('recall_at_')}"
     return labels.get(key, key)
 
 
 def format_metric(key: str, value: Any) -> str:
-    if isinstance(value, (int, float)) and key in {"recall_at_5", "fix_success_rate"}:
+    if isinstance(value, (int, float)) and (
+        key.startswith("recall_at_")
+        or key.endswith("_rate")
+        or key in {"citation_precision", "line_overlap", "ndcg", "mrr"}
+    ):
         return f"{value * 100:.1f}%"
     if isinstance(value, float):
         return f"{value:.4f}"
@@ -328,6 +334,8 @@ def format_value(value: Any) -> str:
 def test_label(test_result: dict[str, Any]) -> str:
     if not test_result:
         return "n/a"
+    if test_result.get("status"):
+        return str(test_result["status"])
     if test_result.get("tests_ran"):
         return "passed" if test_result.get("passed") else "failed"
     if test_result.get("skipped_reason"):

@@ -14,6 +14,7 @@ backend/**/__pycache__/
 backend/.pytest_cache/
 backend/.ruff_cache/
 scripts/__pycache__/
+benchmarks/.materialized/
 
 frontend/node_modules/
 frontend/.next/

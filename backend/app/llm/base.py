@@ -1,6 +1,9 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from collections.abc import Iterator
+from typing import Any
+
+from app.agent.actions import Finish, PlanNextAction
 
 
 @dataclass(slots=True)
@@ -30,6 +33,44 @@ class BaseLLMProvider(ABC):
         previous_failure: str | None = None,
     ) -> str:
         raise NotImplementedError("Patch generation is not implemented for this provider.")
+
+    def plan_next_action(
+        self,
+        *,
+        issue: str,
+        context: dict[str, Any],
+    ) -> tuple[PlanNextAction, int]:
+        return (
+            Finish(
+                action="Finish",
+                hypothesis="The configured model does not support local action planning.",
+                rationale="Stopping is safer than inventing an unvalidated action.",
+                reason="local_action_planner_not_implemented",
+            ),
+            0,
+        )
+
+    def record_llm_usage(
+        self,
+        *,
+        total_tokens: int,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        estimated: bool = False,
+    ) -> None:
+        """Expose per-call usage to the deterministic trace without provider coupling."""
+
+        self._last_llm_usage = {
+            "total_tokens": max(0, int(total_tokens)),
+            "input_tokens": input_tokens if isinstance(input_tokens, int) else None,
+            "output_tokens": output_tokens if isinstance(output_tokens, int) else None,
+            "estimated": estimated,
+        }
+
+    def consume_llm_usage(self) -> dict[str, int | bool | None] | None:
+        usage = getattr(self, "_last_llm_usage", None)
+        self._last_llm_usage = None
+        return usage if isinstance(usage, dict) else None
 
     def plan_mcp_tools(
         self,

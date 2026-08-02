@@ -35,7 +35,7 @@ const DEFAULT_FIX_CASES = `{
       "repo_id": "replace-with-repo-id",
       "issue": "add function test fails: expected 5 but received -1",
       "test_command": "npm test",
-      "expected_status": "success",
+      "expected_status": "verified_success",
       "expected_diff_contains": ["return a + b"]
     }
   ]
@@ -390,10 +390,12 @@ function RunSummary({ run, isLoading }: { run: EvaluationRun | null; isLoading: 
   }
 
   const metrics = run.metrics_json;
-  const primaryMetric =
-    run.task_type === "fix"
-      ? numberMetric(metrics, "fix_success_rate")
-      : numberMetric(metrics, "recall_at_5");
+  const primaryMetricName =
+    stringValue(metrics.primary_metric) ??
+    (run.task_type === "fix"
+      ? "final_verified_fix_rate"
+      : `recall_at_${numberMetric(metrics, "top_k") ?? 5}`);
+  const primaryMetric = numberMetric(metrics, primaryMetricName);
   const avgLatency = numberMetric(metrics, "avg_latency_sec");
   const avgToolCalls = numberMetric(metrics, "avg_tool_calls");
   const failures = recordMetric(metrics, "failure_distribution");
@@ -421,7 +423,7 @@ function RunSummary({ run, isLoading }: { run: EvaluationRun | null; isLoading: 
 
       <div className="mt-5 grid gap-3 sm:grid-cols-3">
         <Metric
-          label={run.task_type === "fix" ? "Fix success" : "Recall@5"}
+          label={metricLabel(primaryMetricName)}
           value={
             run.status === "running"
               ? "running"
@@ -667,12 +669,17 @@ function parseFixCases(raw: string): FixEvaluationCase[] {
     }
     const repoId = stringValue(item.repo_id);
     const issue = stringValue(item.issue);
-    const expectedStatus = stringValue(item.expected_status) ?? "success";
+    const rawExpectedStatus = stringValue(item.expected_status);
+    const expectedStatus = rawExpectedStatus === "success"
+      ? "verified_success"
+      : rawExpectedStatus ?? "verified_success";
     if (!repoId || !issue) {
       throw new Error(`Case ${index + 1} requires repo_id and issue.`);
     }
-    if (expectedStatus !== "success" && expectedStatus !== "failed") {
-      throw new Error(`Case ${index + 1} expected_status must be success or failed.`);
+    if (!isFixExpectedStatus(expectedStatus)) {
+      throw new Error(
+        `Case ${index + 1} expected_status must be a strict verification status.`
+      );
     }
     return {
       case_id: stringValue(item.case_id),
@@ -693,7 +700,7 @@ function expectedValue(result: {
   metadata_json: Record<string, unknown>;
 }) {
   if (result.task_type === "fix") {
-    return stringValue(result.metadata_json.expected_status) ?? "success";
+    return stringValue(result.metadata_json.expected_status) ?? "verified_success";
   }
   return result.expected_file ?? "n/a";
 }
@@ -721,6 +728,17 @@ function numberMetric(metrics: Record<string, unknown>, key: string) {
   return typeof value === "number" ? value : null;
 }
 
+function metricLabel(name: string) {
+  if (/^recall_at_\d+$/.test(name)) {
+    return `Recall@${name.replace("recall_at_", "")}`;
+  }
+  const labels: Record<string, string> = {
+    final_verified_fix_rate: "Final verified fix",
+    fix_success_rate: "Fix success"
+  };
+  return labels[name] ?? name;
+}
+
 function recordMetric(metrics: Record<string, unknown>, key: string) {
   const value = metrics[key];
   return isRecord(value) ? value : {};
@@ -739,6 +757,18 @@ function topCitationPath(resultJson: Record<string, unknown> | unknown[] | null)
 
 function stringValue(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function isFixExpectedStatus(
+  value: string
+): value is NonNullable<FixEvaluationCase["expected_status"]> {
+  return [
+    "verified_success",
+    "unverified_patch",
+    "not_reproduced",
+    "failed",
+    "infra_error"
+  ].some((status) => status === value);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

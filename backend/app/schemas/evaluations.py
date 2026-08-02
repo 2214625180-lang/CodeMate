@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 EvaluationTaskType = Literal["retrieval", "fix"]
@@ -14,6 +14,8 @@ class RetrievalEvaluationCase(BaseModel):
     question: str = Field(..., min_length=1, max_length=8000)
     expected_file: str = Field(..., min_length=1, max_length=2048)
     expected_lines: dict | list | None = None
+    category: str = Field(default="unspecified", min_length=1, max_length=64)
+    tags: list[str] = Field(default_factory=list, max_length=20)
 
 
 class RetrievalEvaluationRunRequest(BaseModel):
@@ -30,8 +32,23 @@ class FixEvaluationCase(BaseModel):
     repo_id: str = Field(..., min_length=1, max_length=36)
     issue: str = Field(..., min_length=1, max_length=20000)
     test_command: str | None = Field(default=None, max_length=255)
-    expected_status: Literal["success", "failed"] = "success"
+    expected_status: Literal[
+        "verified_success",
+        "unverified_patch",
+        "not_reproduced",
+        "failed",
+        "infra_error",
+    ] = "verified_success"
     expected_diff_contains: list[str] = Field(default_factory=list, max_length=20)
+    allowed_changed_files: list[str] = Field(default_factory=list, max_length=20)
+    category: str = Field(default="unspecified", min_length=1, max_length=64)
+    tags: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("expected_status", mode="before")
+    @classmethod
+    def normalize_legacy_success(cls, value: object) -> object:
+        # Historical datasets used `success` before baseline reproduction became mandatory.
+        return "verified_success" if value == "success" else value
 
 
 class FixEvaluationRunRequest(BaseModel):

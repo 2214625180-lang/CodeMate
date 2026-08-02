@@ -107,6 +107,8 @@ def normalize_cases(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "question": case["question"],
                 "expected_file": case["expected_file"],
                 "expected_lines": case.get("expected_lines"),
+                "category": case.get("category", "unspecified"),
+                "tags": case.get("tags", []),
             }
         )
     return normalized
@@ -114,12 +116,21 @@ def normalize_cases(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def to_report(evaluation_run: dict[str, Any]) -> dict[str, Any]:
     metrics = evaluation_run.get("metrics_json") or {}
+    primary_metric = metrics.get("primary_metric") or f"recall_at_{metrics.get('top_k', 5)}"
     return {
         "evaluation_run_id": evaluation_run.get("id"),
         "status": evaluation_run.get("status"),
         "cases": evaluation_run.get("case_count", 0),
-        "recall_at_5": metrics.get("recall_at_5", 0.0),
+        "primary_metric": primary_metric,
+        str(primary_metric): metrics.get(str(primary_metric), 0.0),
+        "mrr": metrics.get("mrr", 0.0),
+        "ndcg": metrics.get("ndcg", 0.0),
+        "file_hit_rate": metrics.get("file_hit_rate", 0.0),
+        "line_overlap": metrics.get("line_overlap"),
+        "citation_precision": metrics.get("citation_precision", 0.0),
         "avg_latency_sec": metrics.get("avg_latency_sec", 0.0),
+        "p50_latency_sec": metrics.get("p50_latency_sec", 0.0),
+        "p95_latency_sec": metrics.get("p95_latency_sec", 0.0),
         "failure_distribution": metrics.get("failure_distribution", {}),
         "top_k": metrics.get("top_k"),
         "results": [result_summary(result) for result in evaluation_run.get("results", [])],

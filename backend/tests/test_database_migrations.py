@@ -24,7 +24,14 @@ def test_fresh_database_upgrade_check_and_downgrade(tmp_path, monkeypatch):
     current, head = migrations.current_and_head()
     tables = set(inspect(engine).get_table_names())
     assert current == head
-    assert {"repositories", "mcp_tool_executions", "mcp_quota_policies"} <= tables
+    assert {
+        "repositories",
+        "mcp_tool_executions",
+        "mcp_quota_policies",
+        "agent_checkpoints",
+        "agent_checkpoint_blobs",
+        "agent_checkpoint_writes",
+    } <= tables
 
     command.downgrade(migrations.alembic_config(), "base")
     assert set(inspect(engine).get_table_names()) <= {"alembic_version"}

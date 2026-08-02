@@ -185,8 +185,8 @@ function datasetLabel(artifact: EvaluationRunArtifact) {
 
 function metricLabel(key: string) {
   const labels: Record<string, string> = {
-    recall_at_5: "Recall@5",
     fix_success_rate: "Fix Success Rate",
+    final_verified_fix_rate: "Final Verified Fix Rate",
     avg_latency_sec: "Avg Latency",
     avg_tool_calls: "Avg Tool Calls",
     passed: "Passed",
@@ -194,11 +194,14 @@ function metricLabel(key: string) {
     cases: "Cases",
     top_k: "Top K"
   };
-  return labels[key] ?? key;
+  return /^recall_at_\d+$/.test(key) ? `Recall@${key.replace("recall_at_", "")}` : labels[key] ?? key;
 }
 
 function formatMetric(key: string, value: unknown) {
-  if (typeof value === "number" && (key === "recall_at_5" || key === "fix_success_rate")) {
+  if (
+    typeof value === "number" &&
+    (/^recall_at_\d+$/.test(key) || key.endsWith("_rate"))
+  ) {
     return `${(value * 100).toFixed(1)}%`;
   }
   if (typeof value === "number" && !Number.isInteger(value)) {
@@ -234,6 +237,9 @@ function formatValue(value: unknown): string {
 function testLabel(testResult: Record<string, unknown> | null) {
   if (!testResult) {
     return "n/a";
+  }
+  if (typeof testResult.status === "string") {
+    return testResult.status;
   }
   if (testResult.tests_ran) {
     return testResult.passed ? "passed" : "failed";

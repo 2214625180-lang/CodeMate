@@ -5,6 +5,7 @@ import subprocess
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import httpx
 
@@ -22,6 +23,26 @@ class TestResult:
     timed_out: bool = False
     runtime: str = "docker"
     skipped_reason: str | None = None
+    failure_kind: Literal["test_failure", "skipped", "infrastructure"] | None = None
+
+    def __post_init__(self) -> None:
+        # `passed` is derived from execution evidence, even for remote broker responses.
+        self.passed = bool(
+            self.tests_ran
+            and self.exit_code == 0
+            and self.passed
+            and self.failure_kind is None
+            and not self.timed_out
+            and self.skipped_reason is None
+        )
+        if self.failure_kind is not None:
+            return
+        if self.skipped_reason:
+            self.failure_kind = "skipped"
+        elif self.timed_out or not self.tests_ran or self.exit_code in {124, 125, 126, 127}:
+            self.failure_kind = "infrastructure"
+        elif self.exit_code != 0:
+            self.failure_kind = "test_failure"
 
     def to_dict(self) -> dict:
         return {
@@ -34,6 +55,7 @@ class TestResult:
             "timed_out": self.timed_out,
             "runtime": self.runtime,
             "skipped_reason": self.skipped_reason,
+            "failure_kind": self.failure_kind,
         }
 
 
@@ -130,7 +152,9 @@ class SandboxService:
                 return "npm test"
 
         if any(workspace.rglob("*.py")):
-            return "pytest"
+            if self._uses_pytest(workspace):
+                return "python -m pytest"
+            return "python -m unittest discover"
 
         return None
 
@@ -138,13 +162,15 @@ class SandboxService:
         runtime = settings.sandbox_runtime.lower()
         if command is None:
             return TestResult(
-                passed=True,
+                passed=False,
                 exit_code=0,
                 stdout="未检测到测试命令，未运行测试；仅完成 patch 应用校验。",
                 stderr="",
                 command=None,
                 tests_ran=False,
                 runtime=runtime,
+                skipped_reason="No test command was configured or detected.",
+                failure_kind="skipped",
             )
 
         if command not in settings.allowed_test_commands:
@@ -253,24 +279,22 @@ class SandboxService:
                 timeout=settings.sandbox_timeout_seconds,
                 check=False,
             )
-            return TestResult(
-                passed=result.returncode == 0,
+            return self.test_result_from_execution(
+                reported_passed=result.returncode == 0,
                 exit_code=result.returncode,
                 stdout=result.stdout,
                 stderr=result.stderr,
                 command=command,
-                tests_ran=True,
                 runtime=runtime,
             )
         except subprocess.TimeoutExpired as exc:
             subprocess.run(["docker", "rm", "-f", container_name], capture_output=True, check=False)
-            return TestResult(
-                passed=False,
+            return self.test_result_from_execution(
+                reported_passed=False,
                 exit_code=124,
                 stdout=exc.stdout or "",
-                stderr=(exc.stderr or "") + "\nTest command timed out.",
+                stderr=self._output_text(exc.stderr or "") + "\nTest command timed out.",
                 command=command,
-                tests_ran=True,
                 timed_out=True,
                 runtime=runtime,
             )
@@ -383,26 +407,50 @@ class SandboxService:
                 check=False,
                 shell=False,
             )
-            return TestResult(
-                passed=result.returncode == 0,
+            return self.test_result_from_execution(
+                reported_passed=result.returncode == 0,
                 exit_code=result.returncode,
                 stdout=result.stdout,
                 stderr=result.stderr,
                 command=command,
-                tests_ran=True,
                 runtime="firecracker",
             )
         except subprocess.TimeoutExpired as exc:
-            return TestResult(
-                passed=False,
+            return self.test_result_from_execution(
+                reported_passed=False,
                 exit_code=124,
                 stdout=exc.stdout or "",
-                stderr=(exc.stderr or "") + "\nTest command timed out.",
+                stderr=self._output_text(exc.stderr or "") + "\nTest command timed out.",
                 command=command,
-                tests_ran=True,
                 timed_out=True,
                 runtime="firecracker",
             )
+
+    def test_result_from_execution(
+        self,
+        *,
+        reported_passed: bool,
+        exit_code: int,
+        stdout: str | bytes,
+        stderr: str | bytes,
+        command: str,
+        runtime: str,
+        timed_out: bool = False,
+    ) -> TestResult:
+        stdout_text = self._output_text(stdout)
+        stderr_text = self._output_text(stderr)
+        # Dependency setup is wrapped to exit 125 before the test command starts.
+        tests_ran = not timed_out and exit_code != 125
+        return TestResult(
+            passed=reported_passed,
+            exit_code=exit_code,
+            stdout=stdout_text,
+            stderr=stderr_text,
+            command=command,
+            tests_ran=tests_ran,
+            timed_out=timed_out,
+            runtime=runtime,
+        )
 
     def list_files(self, *, workspace: Path, pattern: str | None = None) -> list[str]:
         files: list[str] = []
@@ -453,6 +501,19 @@ class SandboxService:
             return self._python_dependency_install_command(workspace=workspace)
         return None
 
+    def _uses_pytest(self, workspace: Path) -> bool:
+        if any((workspace / name).exists() for name in ("pytest.ini", "tox.ini", "conftest.py")):
+            return True
+        for dependency_file in (workspace / "requirements.txt", workspace / "pyproject.toml"):
+            if not dependency_file.exists():
+                continue
+            try:
+                if "pytest" in dependency_file.read_text(encoding="utf-8", errors="ignore").lower():
+                    return True
+            except OSError:
+                continue
+        return False
+
     def _node_dependency_install_command(self, *, workspace: Path, command: str) -> str | None:
         package_json = workspace / "package.json"
         if not package_json.exists():
@@ -497,7 +558,11 @@ class SandboxService:
     def _test_shell_command(self, *, dependency_command: str | None, command: str) -> str:
         if dependency_command is None:
             return command
-        return f"{dependency_command} && {command}"
+        return f"{{ {dependency_command}; }} || exit 125; {command}"
+
+    @staticmethod
+    def _output_text(value: str | bytes) -> str:
+        return value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value
 
     def _offline_dependency_skip(self, *, command: str, runtime: str) -> TestResult:
         reason = (
@@ -505,7 +570,7 @@ class SandboxService:
             "installation before it can run."
         )
         return TestResult(
-            passed=True,
+            passed=False,
             exit_code=0,
             stdout=(
                 "未运行测试：sandbox 当前禁用网络，且测试命令需要先安装依赖；"
@@ -516,6 +581,7 @@ class SandboxService:
             tests_ran=False,
             runtime=runtime,
             skipped_reason=reason,
+            failure_kind="skipped",
         )
 
     def _has_node_dependencies(self, package_data: dict) -> bool:
