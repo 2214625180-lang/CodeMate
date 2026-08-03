@@ -35,6 +35,7 @@ EXPECTED_ROUTE_RBAC: dict[tuple[str, str], RequiredRole] = {
     ("POST", "/evaluations/datasets"): "admin",
     ("POST", "/evaluations/datasets/{dataset_id}/run"): "runner",
     ("GET", "/evaluations/datasets/{dataset_id}/gate"): "viewer",
+    ("POST", "/evaluations/capabilities/{capability}/evidence"): "admin",
     ("GET", "/evaluations/datasets/{dataset_id}/snapshots"): "viewer",
     ("POST", "/evaluations/datasets/{dataset_id}/snapshots/backfill"): "admin",
     ("GET", "/evaluations/datasets/{dataset_id}/history"): "viewer",

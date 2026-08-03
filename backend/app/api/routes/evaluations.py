@@ -12,6 +12,7 @@ from app.api.auth import (
 from app.core.database import get_db
 from app.core.queue import enqueue_evaluation_run
 from app.schemas.evaluations import (
+    CapabilityBenchmarkEvidenceRead,
     EvaluationDatasetCreate,
     EvaluationDatasetRead,
     EvaluationDatasetRunRequest,
@@ -29,6 +30,10 @@ from app.schemas.evaluations import (
 )
 from app.services.evaluation_dataset_service import EvaluationDatasetService
 from app.services.evaluation_artifact_service import EvaluationArtifactService
+from app.services.capability_benchmark_service import (
+    CapabilityBenchmarkEvidenceError,
+    CapabilityBenchmarkService,
+)
 from app.services.evaluation_service import EvaluationService
 from app.services.evaluation_snapshot_backfill_service import EvaluationSnapshotBackfillService
 
@@ -143,6 +148,29 @@ def evaluate_regression_gate(
     except FileNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+
+@router.post(
+    "/capabilities/{capability}/evidence",
+    response_model=CapabilityBenchmarkEvidenceRead,
+    dependencies=[Depends(require_evaluation_admin)],
+)
+def require_capability_benefit_evidence(
+    capability: str,
+    dataset_id: str = Query(..., min_length=1, max_length=36),
+    candidate_run_id: str = Query(..., min_length=1, max_length=36),
+    db: Session = Depends(get_db),
+):
+    try:
+        return CapabilityBenchmarkService(db).require_benefit_evidence(
+            capability=capability,  # type: ignore[arg-type]
+            dataset_id=dataset_id,
+            candidate_run_id=candidate_run_id,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except (CapabilityBenchmarkEvidenceError, ValueError) as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
 

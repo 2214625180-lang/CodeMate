@@ -6,6 +6,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 EvaluationTaskType = Literal["retrieval", "fix"]
 EvaluationRunStatus = Literal["running", "completed", "failed"]
+BenchmarkGatedCapability = Literal[
+    "reviewer_critic_agent",
+    "swe_bench_subset",
+    "go_java_parser",
+    "learned_reranker",
+]
 
 
 class RetrievalEvaluationCase(BaseModel):
@@ -359,5 +365,19 @@ class EvaluationGateResultRead(BaseModel):
     candidate_run: EvaluationRunRead
     status: Literal["passed", "failed", "inconclusive"]
     policy: EvaluationGatePolicy
+    checks: list[EvaluationGateCheckRead]
+    comparison: EvaluationRunCompareRead
+
+
+class CapabilityBenchmarkEvidenceRead(BaseModel):
+    capability: BenchmarkGatedCapability
+    status: Literal["admitted"]
+    dataset_id: str
+    dataset_version: int
+    baseline_run_id: str
+    candidate_run_id: str
+    candidate_config_snapshot: dict
+    primary_metric: str
+    primary_metric_delta: float
     checks: list[EvaluationGateCheckRead]
     comparison: EvaluationRunCompareRead
