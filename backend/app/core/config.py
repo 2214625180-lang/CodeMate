@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     openai_base_url: str = "https://api.openai.com/v1"
     deepseek_api_key: str | None = None
     deepseek_base_url: str = "https://api.deepseek.com"
+    github_app_enabled: bool = False
+    github_app_id: str | None = None
+    github_app_private_key: str | None = None
+    github_app_api_url: str = "https://api.github.com"
+    github_app_branch_prefix: str = "codemate/ci-fix"
     retrieval_top_k: int = 8
     retrieval_strategy: str = "hybrid"
     retrieval_min_vector_score: float = 0.72

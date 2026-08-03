@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import (
     evaluations,
+    github_app,
     health,
     mcp_approvals,
     mcp_client,
@@ -91,6 +92,7 @@ def create_app() -> FastAPI:
     app.include_router(repos.router)
     app.include_router(runs.router)
     app.include_router(evaluations.router)
+    app.include_router(github_app.router)
     app.include_router(mcp_client.router)
     app.include_router(mcp_approvals.router)
     app.include_router(mcp_executions.router)
