@@ -82,6 +82,8 @@ flowchart LR
 
 主要限制是：真实模型 fix benchmark 尚未在当前环境完成，性能指标因此保持 `not_run`；Demo 需要用户自己的有效模型凭据；本地 Demo 为了运行禁网测试容器，会仅向 worker 挂载本地 Docker socket，不能直接当作生产部署拓扑。仓库导入在受保护部署中要求签名身份、显式 Git host allowlist 和外部 egress 策略；本仓库不把它包装成完整的多租户 SaaS。
 
+能力声明按 [Capability Matrix](docs/capability-matrix.md) 区分“已实现、本地验证、CI 验证、staging 验证和计划中”。当前前端版本以 [`frontend/package.json`](frontend/package.json) 为准：Next.js 15.5.22。没有带 immutable artifact 的 CI/staging 结果，不会写成已验证能力。
+
 ## 运行与验证
 
 普通本地开发可使用 deterministic Mock：

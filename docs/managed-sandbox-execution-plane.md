@@ -1,6 +1,12 @@
 # Managed Sandbox Execution Plane：HA 与供应链证明
 
-CodeMate 的 Worker 与 Broker 不持有 Docker Socket。Broker 重新推导命令策略、打包工作区，并通过 mTLS 和绑定请求哈希的短时 Ed25519 断言调用独立执行平面。执行平面支持 Firecracker launcher 或 Kubernetes/Kata Job。
+## 证据状态（2026-08-03）
+
+本文描述的是已提交的执行平面协议、策略校验、部署清单和 qualification 自动化，以及它们在托管环境中应满足的验收契约；不是一份已完成的部署或演练报告。仓库目前没有保留真实 KVM/Firecracker、Kata、HA Redis/Valkey、Cosign 或 TPM/TEE 在本地或 staging 实际运行的不可变证据。
+
+因此，下文的 “staging/production” 均表示部署前置条件或验收要求，而非已观察到的环境事实。只有包含环境标识、commit SHA、`qualification.json: decision=qualified` 与签名 manifest 的证据包，才可以把该能力标记为 staging 已验证。当前状态以 [Capability Matrix](capability-matrix.md) 为准。
+
+当前代码为 Broker 到独立执行平面的 mTLS、请求绑定 Ed25519 断言和策略重校验提供了控制路径。在目标托管拓扑中，执行平面可选择 Firecracker launcher 或 Kubernetes/Kata Job；本地 demo 的 Docker socket 便利配置不属于这一拓扑。
 
 ```text
 Worker -> code-sandbox Broker -> internal L4/L7 load balancer
@@ -13,11 +19,11 @@ Worker -> code-sandbox Broker -> internal L4/L7 load balancer
 
 ## HA 与幂等语义
 
-- staging/production 启动时强制 `SANDBOX_EXECUTION_STATE_BACKEND=redis`。Redis/Valkey 必须由跨可用区 Sentinel、Cluster 或云托管主从提供，开启持久化、TLS、认证、自动故障切换和备份；仓库不会用单 Pod Redis 冒充 HA。
+- staging/production 部署契约要求 `SANDBOX_EXECUTION_STATE_BACKEND=redis`。Redis/Valkey 必须由跨可用区 Sentinel、Cluster 或云托管主从提供，开启持久化、TLS、认证、自动故障切换和备份；单 Pod Redis 不能作为 HA 证据。
 - `execution_id + request_hash` 是幂等键，`jti` 是防重放键。Lua 脚本原子完成 JTI 消费、请求冲突检查、lease 获取和 attempt fencing。键使用同一个 Redis Cluster hash tag，保证脚本在 Cluster 模式下仍为单槽原子操作。
 - 相同请求完成后返回缓存结果并设置 `X-CodeMate-Idempotent-Replay: true`；相同 ID 绑定不同请求返回 409；运行中的请求返回 409 与 `Retry-After`。客户端只重试明确的 in-progress 响应和传输故障。
 - 完成提交校验 owner fence。失去 lease 的旧节点不能覆盖新 attempt；共享状态不可用或结果无法提交时执行平面 fail closed，不返回未记账结果。
-- Kubernetes 默认 3 replicas、PDB `minAvailable=2`、跨 zone/hostname 分散，HPA 在 CPU 65% 时扩至最多 20 个控制器。Kata Job 带 `codemate.io/attested-sandbox-node=true` selector；Cluster Autoscaler/Karpenter 应为该标签对应的专用节点池扩缩容。
+- Kubernetes 清单指定 3 replicas、PDB `minAvailable=2`、跨 zone/hostname 分散，以及 CPU 65% 时扩至最多 20 个控制器的 HPA。Kata Job 带 `codemate.io/attested-sandbox-node=true` selector；实际集群还必须为该标签对应的专用节点池配置 Cluster Autoscaler/Karpenter。
 - RWX PVC 只承载短期工作区，不承担幂等一致性。生产 StorageClass 必须支持多节点 RWX；归档仍以 SHA-256 绑定请求。
 
 ## 供应链验证
@@ -29,7 +35,7 @@ Worker -> code-sandbox Broker -> internal L4/L7 load balancer
 3. `cosign verify-attestation --type slsaprovenance` 校验 SLSA provenance。代码解析 DSSE payload，按完整 repository URI（可带 `@revision`/`#fragment`）比对 source，不使用易误命中的字符串包含判断；可额外固定 builder ID。
 4. Firecracker rootfs 同时校验本地 SHA-256 和 `cosign verify-blob --bundle`。摘要、bundle、rootfs 任一缺失或不匹配都会拒绝执行。
 
-主分支工作流 `.github/workflows/sandbox-supply-chain.yml` 以 BuildKit `mode=max` provenance 和 SBOM 构建 backend/execution-plane 镜像，再用 GitHub OIDC keyless Cosign 对不可变 digest 签名。部署侧应把 workflow 输出的 digest 写入镜像 allowlist。
+主分支工作流 `.github/workflows/sandbox-supply-chain.yml` 定义了以 BuildKit `mode=max` provenance 和 SBOM 构建 backend/execution-plane 镜像、再以 GitHub OIDC keyless Cosign 对不可变 digest 签名的步骤。工作流定义不等于一次成功的供应链构建；部署侧只有在保留成功 run receipt 后，才能把实际输出 digest 写入镜像 allowlist。
 
 签名 microVM rootfs：
 
@@ -42,7 +48,7 @@ scripts/sign_sandbox_rootfs.sh /var/lib/codemate/images/rootfs.ext4
 
 ## TPM/TEE 节点证明
 
-执行平面信任“证明机构签名的规范化 verdict”，不直接信任节点自报字段。生产配置的 verifier command 每次收到随机 256-bit nonce 和目标 `node_id`，从本机 TPM/TEE agent 或远程 attestation service 获取 quote、验证证书链/TCB/撤销状态后，在 stdout 返回 Ed25519 签名 envelope：
+执行平面的生产部署契约要求信任“证明机构签名的规范化 verdict”，而不直接信任节点自报字段。verifier command 应在每次收到随机 256-bit nonce 和目标 `node_id` 后，从本机 TPM/TEE agent 或远程 attestation service 获取 quote、验证证书链/TCB/撤销状态，并在 stdout 返回 Ed25519 签名 envelope：
 
 ```json
 {
@@ -79,13 +85,13 @@ Kubernetes 模式会读取 Kata Job Pod 的真实 `spec.nodeName`，并对该节
 kubectl apply -k deploy/execution-plane/kubernetes
 ```
 
-cert-manager 签发 24 小时 mTLS 证书并在剩余 8 小时时用新私钥续期。Uvicorn 不热重载 TLS context，因此 Reloader 监听 Secret 变化并触发滚动发布；PDB 与 `maxUnavailable=1` 保证轮换期间至少两个副本可用。readiness probe 使用轮换后的客户端证书真正访问 `/health`，同时检查 Redis 和节点证明，而不是只探测 TCP 端口。
+部署时应配置 cert-manager 签发 24 小时 mTLS 证书，并在剩余 8 小时时用新私钥续期。Uvicorn 不热重载 TLS context，因此 Reloader 应监听 Secret 变化并触发滚动发布；PDB 与 `maxUnavailable=1` 是轮换期间至少两个副本可用的验收条件。readiness probe 应使用轮换后的客户端证书真正访问 `/health`，同时检查 Redis 和节点证明，而不是只探测 TCP 端口。
 
 Broker 客户端证书模板位于 `broker-certificate.example.yaml`。将 namespace 改为 Broker 所在 namespace，给 Broker Deployment 添加对应 Reloader annotation，并把 Secret 的 `tls.crt`、`tls.key`、`ca.crt` 挂载到 client 配置路径，即可用相同的 24h/8h 策略自动轮换；Secret 不应跨 namespace 复制。
 
 CA 轮换必须采用双信任窗口：先让 client/server trust bundle 同时包含 old+new CA，再签发 leaf，确认全部连接迁移后移除 old CA。cert-manager 只负责 leaf 自动续期，不会替你安全地完成 root CA 换代。
 
-## Firecracker 多节点
+## Firecracker 多节点（目标部署）
 
 每个节点使用相同策略、Cosign trust root、rootfs release 和 HA Redis endpoint，但配置唯一的 node ID。节点置于跨 AZ Auto Scaling Group/MIG 后，由内部负载均衡器健康检查 8443；扩缩容 lifecycle hook 必须等 TPM/TEE 证明成功后注册 target，终止时先摘流再停止服务。
 

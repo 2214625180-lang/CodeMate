@@ -1,5 +1,7 @@
 # MCP Control Plane Threat Model
 
+> **证据边界：** 下表将代码中的控制项与目标托管部署的防护契约放在同一个威胁模型中。只有本地验证过的行为可表述为本地已验证；CI 和 staging 状态需要不可变运行证据，详见 [Capability Matrix](capability-matrix.md)。
+
 ## Assets
 
 - Repository source and index data;
@@ -43,7 +45,7 @@ External MCP responses, Tool descriptions and schemas are untrusted input. Redis
 | Quota drift after partial failure | Scheduled locked reconciliation and durable evidence | Calls denied briefly during repair |
 | Replay of proxy identity | Signed identity, timestamp and Redis nonce consumption | Redis outage causes fail-closed admin access |
 | Remote MCP workload escapes network boundary | Non-root/read-only/cap-drop Broker on internal-only network; no mounts; all egress through policy Gateway | Container-runtime or kernel vulnerability |
-| Code-test container escape | General Worker has no Docker socket; a credential-isolated Broker revalidates command/image/workspace and starts a network-disabled, read-only, cap-dropped container | Docker daemon and host kernel remain the final isolation boundary |
+| Code-test container escape | 目标托管拓扑由 credential-isolated Broker 重校验 command/image/workspace，并在无 Docker socket 的隔离执行平面运行网络禁用、只读、cap-dropped workload；本地 demo Worker 的 Docker socket 仅用于启动测试容器 | 本地 Docker daemon/host kernel 或托管 runtime 仍是最终隔离边界 |
 | Compliance control silently drifts | Scheduled integrity-bound reports, negative egress canary, readiness failure and SIEM/S3 audit delivery | Simultaneous compromise of runtime and evidence sinks |
 | Audit tampering | Durable outbox, signed SIEM delivery, SHA-256 and S3 COMPLIANCE Object Lock | SIEM and cloud-account administrator collusion |
 
@@ -61,4 +63,4 @@ External MCP responses, Tool descriptions and schemas are untrusted input. Redis
 - Quota Redis and PostgreSQL are not a single distributed transaction; reconciliation detects and repairs drift.
 - Local JSONL remains an emergency fallback; authoritative audit evidence is the SIEM plus Object-Locked S3 copy.
 - Tool output is size bounded and treated as untrusted, but semantic prompt-injection detection remains probabilistic.
-- The code-sandbox Broker no longer controls a host Docker daemon. Execution is delegated over mTLS with request-bound workload identity to a managed Firecracker/Kubernetes plane. Residual risk is concentrated in the external Firecracker launcher/Kata runtime and, for Kubernetes, the single-replica in-memory replay cache until a shared strongly consistent replay store is introduced.
+- 在目标托管设计中，code-sandbox Broker 不控制 host Docker daemon，而是通过 mTLS 和 request-bound workload identity 委托给 Firecracker/Kubernetes 执行平面。该托管 runtime 尚没有 retained staging evidence；其残余风险集中在 Firecracker launcher/Kata runtime，以及 Kubernetes 在引入共享强一致 replay store 前的单副本内存 replay cache。

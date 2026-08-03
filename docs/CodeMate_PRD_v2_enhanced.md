@@ -477,7 +477,7 @@ Code Agent 如果每次任务都从零开始理解仓库，会浪费 token，也
 ```json
 {
   "repo_id": "repo_001",
-  "framework": "Next.js 14",
+  "framework": "Next.js 15.5.22",
   "language": "TypeScript",
   "package_manager": "pnpm",
   "test_command": "pnpm test",
@@ -495,7 +495,7 @@ Code Agent 如果每次任务都从零开始理解仓库，会浪费 token，也
 
 ```text
 ┌──────────────────────────────────────────────────────────┐
-│ Frontend：Next.js 14 + TypeScript + Tailwind + shadcn/ui  │
+│ Frontend：Next.js 15.5.22 + TypeScript + Tailwind + shadcn/ui │
 │ - 仓库管理                                                │
 │ - 代码问答 Chat                                           │
 │ - Agent Trace Timeline                                    │
@@ -818,7 +818,7 @@ snapshot 的 artifact 自动生成简历表述，不在文档中保留待替换�
 
 | 层级 | 技术 | 选型理由 |
 |---|---|---|
-| 前端 | Next.js 14 + TypeScript + TailwindCSS + shadcn/ui | 适合构建流式 Chat、Timeline、Diff Viewer，与你现有技术栈匹配 |
+| 前端 | Next.js 15.5.22 + TypeScript + TailwindCSS + shadcn/ui | 适合构建流式 Chat、Timeline、Diff Viewer，与你现有技术栈匹配 |
 | 后端 | FastAPI | async 支持好，适合 SSE、Agent 编排、Python AI 生态 |
 | Agent 编排 | LangGraph | 用状态机表达多节点 Agent，比简单 Chain 更适合修复循环 |
 | 向量库 | Qdrant | 支持向量检索和 payload metadata 过滤 |
@@ -992,7 +992,7 @@ README 能说明架构和核心流程。
 
 ```text
 CodeMate 代码库智能问答与自动修复 Agent
-技术栈：Next.js 14、FastAPI、LangGraph、Qdrant、PostgreSQL、Redis、Docker、OpenAI API
+技术栈：Next.js 15.5.22、FastAPI、LangGraph、Qdrant、PostgreSQL、Redis、Docker、OpenAI API
 
 - 设计并实现面向 TypeScript/Python 仓库的代码索引管道，基于 AST 将函数、类、组件切分为语义 chunk，并记录文件路径、起止行号、符号名称、imports/exports 等 metadata，用于精准代码问答与溯源引用。
 - 实现关键词检索 + 向量检索 + metadata 过滤 + rerank 的混合检索策略，解决代码场景下函数名、报错栈、文件路径等精确匹配召回不稳定的问题。

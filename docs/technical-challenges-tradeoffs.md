@@ -1,6 +1,6 @@
 # 技术难点与取舍
 
-CodeMate 的核心不是单次调用模型，而是把代码库理解、Agent 修复、沙箱验证、持续评测和权限审计做成一个可闭环的工程系统。面试讲解可以围绕四条主线展开：RAG 保证答案可定位，沙箱保证修复可验证，安全保证系统可上线，评测保证效果可度量。
+CodeMate 的核心不是单次调用模型，而是把代码库理解、Agent 修复、沙箱验证、持续评测和权限审计做成一个可闭环的工程系统。面试讲解可以围绕四条主线展开：RAG 保证答案可定位，沙箱保证修复可验证，安全提供明确边界，评测保证效果可度量。各能力的证据级别以 [Capability Matrix](capability-matrix.md) 为准；代码和清单不等同于 staging 实测。
 
 ## 1. RAG: 代码检索要可定位、可引用、可复现
 
@@ -35,12 +35,12 @@ CodeMate 的核心不是单次调用模型，而是把代码库理解、Agent �
 
 - 每次修复创建临时 workspace，复制必要文件，排除 `.env*`、`node_modules`、build/coverage 等高风险或大目录。
 - 补丁通过 `git apply` 应用，测试命令必须命中 `SANDBOX_ALLOWED_COMMANDS`。
-- Docker 执行默认关闭网络，设置 CPU、内存和 timeout；worker 通过 Docker socket 启动隔离容器。
-- 预留 `SANDBOX_RUNTIME=gvisor` 和 `SANDBOX_RUNTIME=firecracker`，可以从普通 Docker 升级到更强隔离。
+- Docker 执行默认关闭网络，设置 CPU、内存和 timeout。**仅本地 demo Compose overlay** 将 Docker socket 挂给 worker，以启动禁网测试容器；这是开发便利，不是托管部署拓扑。
+- `SANDBOX_RUNTIME=gvisor` 与 `SANDBOX_RUNTIME=firecracker` 的配置、客户端控制路径和部署工件已存在；真实 gVisor/Firecracker/Kata runtime 尚无本仓库保留的本地或 staging 运行证据，不能表述为已验证运行时。
 
 取舍：
 
-- Docker 兼容性和开发效率最好，但隔离强度不如 microVM；因此默认 Docker，强安全场景切到 gVisor/Firecracker。
+- Docker 兼容性和开发效率最好，但隔离强度不如 microVM；因此本地默认 Docker。更强隔离是托管执行平面的部署目标，只有通过真实环境 qualification 后才能升级为 staging 验证能力。
 - 命令白名单会降低灵活性，但能把风险从“任意命令执行”收敛到“明确允许的验证命令”。
 - `--network none` 会让部分需要联网下载依赖的测试失败，因此更适合预装依赖或 CI 缓存完善的场景。
 
@@ -80,7 +80,7 @@ CodeMate 的核心不是单次调用模型，而是把代码库理解、Agent �
 
 - Evaluation Center 管理 datasets、cases、snapshots、runs、artifacts、history、compare reports。
 - Retrieval evaluation 统计 Recall@5 和延迟；Fix evaluation 统计 Fix Success Rate、tool calls、延迟。
-- CI gate 可在 GitHub Actions 中调用，使用 scoped CI token 触发 run，并把结果作为合并门禁。
+- CI gate 工作流可在 GitHub Actions 中调用，使用 scoped CI token 触发 run，并可作为合并门禁；单有 workflow 定义不等于存在成功 CI 运行，发布时必须链接 receipt 或 artifact。
 - 评测、审计、安全页面都走同一套 RBAC，避免评测数据或历史结果被未授权用户修改。
 
 取舍：
@@ -91,4 +91,4 @@ CodeMate 的核心不是单次调用模型，而是把代码库理解、Agent �
 
 ## 面试收束
 
-可以这样总结：CodeMate 把 AI 代码助手从“能回答/能修复”推进到“可定位、可验证、可评测、可审计”。RAG 提供 grounded context，Agent 生成补丁，沙箱验证结果，评测系统持续回归，RBAC 与签名身份让这套能力具备上线部署的安全边界。
+可以这样总结：CodeMate 把 AI 代码助手从“能回答/能修复”推进到“可定位、可验证、可评测、可审计”。RAG 提供 grounded context，Agent 生成补丁，沙箱验证结果，评测系统持续回归，RBAC 与签名身份提供明确的部署安全边界；真实 CI/staging 与托管运行时结论必须由对应 evidence artifact 支撑。

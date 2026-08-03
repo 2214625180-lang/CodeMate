@@ -1,5 +1,7 @@
 # MCP Sandbox Isolation、Egress Enforcement 与持续合规
 
+> **证据边界：** 本文说明已提交的 Broker/Gateway 配置、策略与合规检查，以及托管部署应满足的隔离要求。它不证明独立 Firecracker/Kata 执行平面、外部 SIEM 或 staging 运行态已经部署。相关结论必须遵守 [Capability Matrix](capability-matrix.md) 的证据级别。
+
 ## 架构
 
 远程 MCP 协议连接不再由 Backend 或通用 Worker 直接建立：
@@ -16,7 +18,7 @@ Allowlisted MCP / OAuth host:443
 
 Sandbox Broker 只加入 `mcp_isolated` internal network，没有默认互联网路由。它使用只读根文件系统、非 root UID、`cap_drop: ALL`、`no-new-privileges`、PID/CPU/内存限制，并且没有宿主机或持久卷挂载。Egress Gateway 是唯一同时加入 internal network 和外部网络的组件。
 
-通用 Worker 和 `code-sandbox` Broker 都不再挂载 Docker Socket。Broker 只接收共享 Workspace、Broker Token、固定镜像和命令白名单配置，不接收数据库、KMS、MCP、SIEM 或管理员凭据；它重新推导测试命令后，通过 mTLS 和请求绑定的 Ed25519 工作负载身份调用独立 Firecracker/Kubernetes 执行平面。执行平面再次校验策略，并强制 microVM 或 Kata Job 隔离。详见 `docs/managed-sandbox-execution-plane.md`。
+MCP Sandbox Broker 不挂载 Docker Socket。为了启动禁网测试容器，**本地 demo 的 Agent Worker** 可以挂载本机 Docker socket；该便利配置不能外推到托管部署。目标托管拓扑中，Broker 只接收共享 Workspace、Broker Token、固定镜像和命令白名单配置，不接收数据库、KMS、MCP、SIEM 或管理员凭据；它重新推导测试命令后，通过 mTLS 和请求绑定的 Ed25519 工作负载身份调用独立 Firecracker/Kubernetes 执行平面。执行平面再次校验策略，并以 microVM 或 Kata Job 隔离作为部署验收要求。详见 [Managed Sandbox Execution Plane](managed-sandbox-execution-plane.md)。
 
 Bearer Token 只在 Backend/Worker 与 Broker 之间的认证请求中短暂传输；Gateway 仅看到 CONNECT hostname、port 和加密后的 TLS 字节，不接收 MCP Credential。Broker Token 与 Proxy Token 必须是不同的 32+ 字符 Secret Manager 值。
 
@@ -51,7 +53,7 @@ GET  /mcp-operations/compliance/latest
 POST /mcp-operations/compliance/scan
 ```
 
-CI/staging 还会运行 `scripts/mcp_container_compliance.py`，验证 internal network、只读 rootfs、非 root、cap-drop、no-new-privileges 和无挂载约束。任一项失败都会阻止 qualification。
+CI/staging 工作流定义会运行 `scripts/mcp_container_compliance.py`，验证 internal network、只读 rootfs、非 root、cap-drop、no-new-privileges 和无挂载约束。只有保留成功 workflow receipt 和 qualification evidence 后，才能声称该 gate 在 CI/staging 实际通过；任一实际运行失败都应阻止 qualification。
 
 ## Staging 配置
 

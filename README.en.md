@@ -82,6 +82,8 @@ This is deliberately constrained rather than a claim to repair every repository.
 
 The main limitation is that real-model fix benchmarks have not been completed in this environment, so the corresponding metrics stay `not_run`. The demo requires the user's own valid model credential. The local demo mounts a Docker socket only into the worker to launch network-disabled test containers; it is not a production deployment topology. Protected repository import requires a signed user identity, an explicit Git-host allowlist, and a network egress policy; this repository does not present that boundary as a complete multi-tenant SaaS.
 
+The [Capability Matrix](docs/capability-matrix.md) distinguishes Implemented, Locally verified, CI verified, Staging verified, and Planned claims. The frontend manifest is the version source of truth: [`frontend/package.json`](frontend/package.json) currently specifies Next.js 15.5.22. No CI or staging result is presented as verified without an immutable artifact.
+
 ## Run and verify
 
 For regular local development, use the deterministic Mock configuration:

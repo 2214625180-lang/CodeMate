@@ -1,6 +1,8 @@
 # Sandbox HA Staging Qualification 与证据包
 
-该 gate 对真实 staging execution plane 发起 mTLS + request-bound Ed25519 请求，并执行可恢复的破坏性演练。dry-run、mock、单机 Compose 和跳过场景只能生成 rehearsal evidence，不能得到 `qualified` 决策。
+> **证据状态（2026-08-03）：** 本文定义并自动化 qualification gate，不是一次已完成的 qualification report。当前仓库未保留真实 staging 执行平面产生的 `qualified` 签名 evidence bundle。实际状态见 [Capability Matrix](capability-matrix.md)。
+
+该 gate 在真实 staging execution plane 上运行时，会发起 mTLS + request-bound Ed25519 请求，并执行可恢复的破坏性演练。dry-run、mock、单机 Compose 和跳过场景只能生成 rehearsal evidence，不能得到 `qualified` 决策。
 
 ## 覆盖范围
 

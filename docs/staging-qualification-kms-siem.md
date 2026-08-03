@@ -1,6 +1,10 @@
 # Staging Release Qualification、KMS 与 SIEM
 
-这一阶段提供真正会阻止发布的 staging qualification。只有真实 HTTPS staging、AWS KMS、SIEM HTTP 接收端、启用 Object Lock 的 S3 bucket、MCP 压测和三项故障演练全部通过，报告才会给出 `qualified`；本地或模拟环境永远只能得到 `hold`。
+## 证据状态（2026-08-03）
+
+本文提供 KMS、SIEM、不可变存储、压测与故障演练的配置契约、执行脚本和证据格式。它们已作为代码和自动化工件提交，但仓库当前没有保留一个真实 protected staging 环境产生的、签名且 `decision=qualified` 的证据包。因此本文不是 “staging 已验证” 的证明，也不应据此推断 AWS KMS、SIEM 或 Object Lock 已在环境中启用。
+
+只有真实 HTTPS staging、AWS KMS、SIEM HTTP 接收端、启用 Object Lock 的 S3 bucket、MCP 压测和三项故障演练全部通过，报告才可给出 `qualified`；本地或模拟环境永远只能得到 `hold`。提交 `qualification.json`、签名 manifest、环境标识和 commit SHA 后，才可更新 [Capability Matrix](capability-matrix.md) 中的 staging 状态。
 
 ## 1. Staging 部署
 
@@ -13,7 +17,7 @@ docker compose \
   up -d --build
 ```
 
-Staging Compose 不挂载源代码，PostgreSQL 与 Redis 使用持久卷，Backend readiness 会验证数据库、Redis、Alembic head、安全审计 outbox 和 RQ Worker 心跳。`RQ_WORKER_READINESS_REQUIRED=true` 在 staging/production 为强制项；所有 Worker 消失并超过心跳 TTL 后，readiness 必须失败。`MCP_REGISTRY_ALLOWED_HOSTS` 也必须显式列出 MCP、OAuth 和回调主机，作为 DNS/SSRF 防护的应用层边界；`MCP_ALLOWED_REPO_IDS` 必须显式限定只读 MCP Server 可见的仓库，空值不允许进入 staging/production。
+Staging Compose 配置要求不挂载源代码，并为 PostgreSQL 与 Redis 配置持久卷；Backend readiness 的验收条件包括数据库、Redis、Alembic head、安全审计 outbox 和 RQ Worker 心跳。`RQ_WORKER_READINESS_REQUIRED=true` 在 staging/production 是强制项；所有 Worker 消失并超过心跳 TTL 后，readiness 必须失败。`MCP_REGISTRY_ALLOWED_HOSTS` 也必须显式列出 MCP、OAuth 和回调主机，作为 DNS/SSRF 防护的应用层边界；`MCP_ALLOWED_REPO_IDS` 必须显式限定只读 MCP Server 可见的仓库，空值不允许进入 staging/production。
 
 ## 2. KMS 信封加密与迁移
 
@@ -100,7 +104,7 @@ Qualification 顺序：
 
 任何 preflight 失败都会跳过压测和故障注入。`--skip-faults`、`--allow-local-rehearsal` 或任意 Gate 失败都会输出 `decision: hold` 并返回非零状态。
 
-证据目录包含 `qualification.json`、`qualification.md`、load/fault JSON、每个命令的 stdout/stderr 和 `manifest.sha256`。GitHub Actions 手动工作流使用受保护的 `staging` Environment 与 self-hosted runner 执行相同流程。
+证据目录包含 `qualification.json`、`qualification.md`、load/fault JSON、每个命令的 stdout/stderr 和 `manifest.sha256`。GitHub Actions 中已定义使用受保护 `staging` Environment 与 self-hosted runner 执行相同流程的手动工作流；在保存成功 run 与证据包前，不能把工作流定义当作运行记录。
 
 ## 5. 发布判定
 
