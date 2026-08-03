@@ -4,6 +4,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.core.telemetry import operation_span, record_span_usage
 from app.models.agent_step import AgentStep
 
 
@@ -36,35 +37,43 @@ class AgentStepService:
         return step
 
     def record_tool(self, *, run_id: str, tool_name: str, input_json: dict, fn):
-        start = perf_counter()
-        self.record(
-            run_id=run_id,
-            step_type="tool_call",
-            tool_name=tool_name,
-            input_json=input_json,
-        )
-        try:
-            output = fn()
-        except Exception as exc:
+        with operation_span(
+            f"codemate.tool.{tool_name}",
+            component="tool",
+            prompt_version="agent-tool-v1",
+            attributes={"tool.name": tool_name, "agent.run_id": run_id},
+        ) as span:
+            start = perf_counter()
+            self.record(
+                run_id=run_id,
+                step_type="tool_call",
+                tool_name=tool_name,
+                input_json=input_json,
+            )
+            try:
+                output = fn()
+            except Exception as exc:
+                duration_ms = int((perf_counter() - start) * 1000)
+                self.record(
+                    run_id=run_id,
+                    step_type="tool_result",
+                    tool_name=tool_name,
+                    output_json={"ok": False, "error": str(exc)},
+                    duration_ms=duration_ms,
+                )
+                record_span_usage(span)
+                raise
+
             duration_ms = int((perf_counter() - start) * 1000)
             self.record(
                 run_id=run_id,
                 step_type="tool_result",
                 tool_name=tool_name,
-                output_json={"ok": False, "error": str(exc)},
+                output_json=_jsonable(output),
                 duration_ms=duration_ms,
             )
-            raise
-
-        duration_ms = int((perf_counter() - start) * 1000)
-        self.record(
-            run_id=run_id,
-            step_type="tool_result",
-            tool_name=tool_name,
-            output_json=_jsonable(output),
-            duration_ms=duration_ms,
-        )
-        return output
+            record_span_usage(span)
+            return output
 
 
 def _jsonable(value: Any):

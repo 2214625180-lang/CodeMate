@@ -1,5 +1,7 @@
 from collections.abc import Iterator
 import difflib
+from functools import wraps
+import inspect
 import re
 from typing import Any
 
@@ -12,10 +14,69 @@ from app.agent.actions import (
     ReadFile,
     SearchCode,
 )
+from app.core.telemetry import operation_span, record_span_usage
 from app.llm.base import BaseLLMProvider, LLMContext
 
 
+def _instrument_mock_llm(operation: str, prompt_version: str):
+    def decorator(fn):
+        if inspect.isgeneratorfunction(fn):
+
+            @wraps(fn)
+            def stream_wrapper(self, *args, **kwargs):
+                emitted_chars = 0
+                with operation_span(
+                    f"gen_ai.{operation}",
+                    component="llm",
+                    model="mock",
+                    prompt_version=prompt_version,
+                    attributes={
+                        "gen_ai.operation.name": operation,
+                        "gen_ai.provider.name": "mock",
+                    },
+                ) as span:
+                    try:
+                        for token in fn(self, *args, **kwargs):
+                            emitted_chars += len(str(token))
+                            yield token
+                    finally:
+                        record_span_usage(
+                            span,
+                            output_tokens=max(0, emitted_chars // 4),
+                            total_tokens=max(0, emitted_chars // 4),
+                        )
+
+            return stream_wrapper
+
+        @wraps(fn)
+        def wrapper(self, *args, **kwargs):
+            with operation_span(
+                f"gen_ai.{operation}",
+                component="llm",
+                model="mock",
+                prompt_version=prompt_version,
+                attributes={
+                    "gen_ai.operation.name": operation,
+                    "gen_ai.provider.name": "mock",
+                },
+            ) as span:
+                result = fn(self, *args, **kwargs)
+                token_usage = (
+                    result[1]
+                    if isinstance(result, tuple) and len(result) == 2 and isinstance(result[1], int)
+                    else max(0, len(str(result)) // 4)
+                )
+                self.record_llm_usage(total_tokens=token_usage, estimated=True)
+                record_span_usage(span, output_tokens=token_usage, total_tokens=token_usage)
+                return result
+
+        return wrapper
+
+    return decorator
+
+
 class MockLLMProvider(BaseLLMProvider):
+    @_instrument_mock_llm("chat", "chat-answer-v1")
     def stream_answer(self, *, question: str, contexts: list[LLMContext]) -> Iterator[str]:
         if not contexts:
             yield "未在当前索引中找到相关代码。"
@@ -54,6 +115,7 @@ class MockLLMProvider(BaseLLMProvider):
         for start in range(0, len(text), size):
             yield text[start : start + size]
 
+    @_instrument_mock_llm("generate_patch", "patch-v1")
     def generate_patch(
         self,
         *,
@@ -78,6 +140,7 @@ class MockLLMProvider(BaseLLMProvider):
 
         return ""
 
+    @_instrument_mock_llm("plan_next_action", "agent-planner-v1")
     def plan_next_action(
         self,
         *,
@@ -165,6 +228,7 @@ class MockLLMProvider(BaseLLMProvider):
                 return match.group(1)
         return None
 
+    @_instrument_mock_llm("plan_mcp_tools", "mcp-tool-planner-v1")
     def plan_mcp_tools(
         self,
         *,
@@ -222,6 +286,7 @@ class MockLLMProvider(BaseLLMProvider):
             return None
         return arguments
 
+    @_instrument_mock_llm("reflect", "agent-reflection-v1")
     def reflect(
         self,
         *,
@@ -245,6 +310,7 @@ class MockLLMProvider(BaseLLMProvider):
             "next_action": "regenerate_patch",
         }
 
+    @_instrument_mock_llm("review_pull_request", "pr-review-v1")
     def review_pull_request(
         self,
         *,

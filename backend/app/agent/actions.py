@@ -48,6 +48,20 @@ class FindReferences(AgentAction):
     symbol: str = Field(min_length=1, max_length=255, pattern=r"^[A-Za-z_$][\w$.:/-]*$")
 
 
+class GetImportGraph(AgentAction):
+    action: Literal["GetImportGraph"]
+    path: str = Field(min_length=1, max_length=500)
+    direction: Literal["imports", "importers", "both"] = "both"
+    depth: int = Field(default=1, ge=1, le=3)
+
+
+class GetCallGraph(AgentAction):
+    action: Literal["GetCallGraph"]
+    symbol: str = Field(min_length=1, max_length=255, pattern=r"^[A-Za-z_$][\w$.:/-]*$")
+    direction: Literal["callers", "callees", "both"] = "both"
+    depth: int = Field(default=1, ge=1, le=3)
+
+
 class RunTests(AgentAction):
     action: Literal["RunTests"]
     command: str = Field(min_length=1, max_length=500)
@@ -68,6 +82,8 @@ PlanNextAction = Annotated[
     | ListFiles
     | FindSymbol
     | FindReferences
+    | GetImportGraph
+    | GetCallGraph
     | RunTests
     | GeneratePatch
     | Finish,
@@ -81,6 +97,8 @@ LOCAL_TOOL_ACTIONS = (
     ListFiles,
     FindSymbol,
     FindReferences,
+    GetImportGraph,
+    GetCallGraph,
     RunTests,
 )
 

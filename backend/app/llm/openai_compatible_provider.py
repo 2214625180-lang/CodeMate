@@ -12,6 +12,7 @@ from app.agent.actions import (
     plan_next_action_json_schema,
 )
 from app.core.config import settings
+from app.core.telemetry import operation_span, record_span_usage
 from app.llm.base import BaseLLMProvider, LLMContext
 
 
@@ -62,21 +63,41 @@ class OpenAICompatibleLLMProvider(BaseLLMProvider):
         ]
 
         payload = self._chat_payload(messages=messages, stream=True)
-        with httpx.Client(timeout=self.timeout_seconds) as client:
+        estimated_input_tokens = max(1, sum(len(message["content"]) for message in messages) // 4)
+        emitted_chars = 0
+        with operation_span(
+            "gen_ai.chat",
+            component="llm",
+            model=self.model,
+            prompt_version="chat-answer-v1",
+            attributes={
+                "gen_ai.operation.name": "chat",
+                "gen_ai.provider.name": self.provider_label,
+            },
+        ) as span:
             try:
-                with client.stream(
-                    "POST",
-                    self._chat_url,
-                    headers=self._headers,
-                    json=payload,
-                ) as response:
-                    self._raise_for_status(response)
-                    for line in response.iter_lines():
-                        token = self._parse_stream_line(line)
-                        if token:
-                            yield token
+                with httpx.Client(timeout=self.timeout_seconds) as client:
+                    with client.stream(
+                        "POST",
+                        self._chat_url,
+                        headers=self._headers,
+                        json=payload,
+                    ) as response:
+                        self._raise_for_status(response)
+                        for line in response.iter_lines():
+                            token = self._parse_stream_line(line)
+                            if token:
+                                emitted_chars += len(token)
+                                yield token
             except httpx.HTTPError as exc:
                 raise RuntimeError(f"{self.provider_label} stream failed: {exc}") from exc
+            finally:
+                record_span_usage(
+                    span,
+                    input_tokens=estimated_input_tokens,
+                    output_tokens=max(0, emitted_chars // 4),
+                    total_tokens=estimated_input_tokens + max(0, emitted_chars // 4),
+                )
 
     def generate_patch(
         self,
@@ -112,7 +133,12 @@ class OpenAICompatibleLLMProvider(BaseLLMProvider):
                 ),
             },
         ]
-        text = self._complete_text(messages=messages, temperature=0.0)
+        text = self._complete_text(
+            messages=messages,
+            temperature=0.0,
+            operation="generate_patch",
+            prompt_version="patch-v1",
+        )
         return self._extract_unified_diff(text)
 
     def plan_next_action(
@@ -168,6 +194,8 @@ class OpenAICompatibleLLMProvider(BaseLLMProvider):
             temperature=0.0,
             max_tokens=output_token_limit,
             timeout_seconds=min(self.timeout_seconds, remaining_seconds),
+            operation="plan_next_action",
+            prompt_version="agent-planner-v1",
         )
         parsed = self._parse_json_object(text)
         if parsed is None:
@@ -219,7 +247,13 @@ class OpenAICompatibleLLMProvider(BaseLLMProvider):
                 ),
             },
         ]
-        text = self._complete_text(messages=messages, temperature=0.0, max_tokens=1200)
+        text = self._complete_text(
+            messages=messages,
+            temperature=0.0,
+            max_tokens=1200,
+            operation="plan_mcp_tools",
+            prompt_version="mcp-tool-planner-v1",
+        )
         parsed = self._parse_json_object(text)
         if parsed is None or not isinstance(parsed.get("calls"), list):
             return []
@@ -293,7 +327,13 @@ class OpenAICompatibleLLMProvider(BaseLLMProvider):
                 ),
             },
         ]
-        text = self._complete_text(messages=messages, temperature=0.0, max_tokens=512)
+        text = self._complete_text(
+            messages=messages,
+            temperature=0.0,
+            max_tokens=512,
+            operation="reflect",
+            prompt_version="agent-reflection-v1",
+        )
         reflection = self._parse_reflection(text)
         if reflection is not None:
             return reflection
@@ -335,7 +375,13 @@ class OpenAICompatibleLLMProvider(BaseLLMProvider):
                 ),
             },
         ]
-        text = self._complete_text(messages=messages, temperature=0.0, max_tokens=2048)
+        text = self._complete_text(
+            messages=messages,
+            temperature=0.0,
+            max_tokens=2048,
+            operation="review_pull_request",
+            prompt_version="pr-review-v1",
+        )
         parsed = self._parse_json_object(text)
         if parsed is None:
             return {
@@ -383,11 +429,15 @@ class OpenAICompatibleLLMProvider(BaseLLMProvider):
         messages: list[dict[str, str]],
         temperature: float | None = None,
         max_tokens: int | None = None,
+        operation: str = "chat_completion",
+        prompt_version: str = "chat-completion-v1",
     ) -> str:
         text, _token_usage = self._complete_text_with_usage(
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
+            operation=operation,
+            prompt_version=prompt_version,
         )
         return text
 
@@ -398,41 +448,71 @@ class OpenAICompatibleLLMProvider(BaseLLMProvider):
         temperature: float | None = None,
         max_tokens: int | None = None,
         timeout_seconds: float | None = None,
+        operation: str = "chat_completion",
+        prompt_version: str = "chat-completion-v1",
     ) -> tuple[str, int]:
         payload = self._chat_payload(
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
         )
-        with httpx.Client(timeout=timeout_seconds or self.timeout_seconds) as client:
-            try:
-                response = client.post(self._chat_url, headers=self._headers, json=payload)
-                self._raise_for_status(response)
-            except httpx.HTTPError as exc:
-                raise RuntimeError(f"{self.provider_label} completion failed: {exc}") from exc
-        data = response.json()
-        choices = data.get("choices") or []
-        usage = data.get("usage") or {}
-        token_usage = usage.get("total_tokens")
-        usage_estimated = False
-        if not isinstance(token_usage, int) or token_usage < 0:
-            estimated_chars = sum(len(message.get("content") or "") for message in messages)
-            token_usage = max(1, estimated_chars // 4)
-            usage_estimated = True
-        self.record_llm_usage(
-            total_tokens=token_usage,
-            input_tokens=usage.get("prompt_tokens"),
-            output_tokens=usage.get("completion_tokens"),
-            estimated=usage_estimated,
+        estimated_input_tokens = max(
+            1,
+            sum(len(message.get("content") or "") for message in messages) // 4,
         )
-        if not choices:
-            return "", token_usage
-        message = choices[0].get("message") or {}
-        return str(message.get("content") or ""), token_usage
+        with operation_span(
+            f"gen_ai.{operation}",
+            component="llm",
+            model=self.model,
+            prompt_version=prompt_version,
+            attributes={
+                "gen_ai.operation.name": operation,
+                "gen_ai.provider.name": self.provider_label,
+            },
+        ) as span:
+            with httpx.Client(timeout=timeout_seconds or self.timeout_seconds) as client:
+                try:
+                    response = client.post(self._chat_url, headers=self._headers, json=payload)
+                    self._raise_for_status(response)
+                except httpx.HTTPError as exc:
+                    raise RuntimeError(f"{self.provider_label} completion failed: {exc}") from exc
+            data = response.json()
+            choices = data.get("choices") or []
+            usage = data.get("usage") or {}
+            token_usage = usage.get("total_tokens")
+            usage_estimated = False
+            if not isinstance(token_usage, int) or token_usage < 0:
+                token_usage = estimated_input_tokens
+                usage_estimated = True
+            input_tokens = usage.get("prompt_tokens")
+            if not isinstance(input_tokens, int) or input_tokens < 0:
+                input_tokens = estimated_input_tokens
+                usage_estimated = True
+            output_tokens = usage.get("completion_tokens")
+            if not isinstance(output_tokens, int) or output_tokens < 0:
+                output_tokens = max(0, token_usage - input_tokens)
+                usage_estimated = True
+            self.record_llm_usage(
+                total_tokens=token_usage,
+                input_tokens=usage.get("prompt_tokens"),
+                output_tokens=usage.get("completion_tokens"),
+                estimated=usage_estimated,
+            )
+            record_span_usage(
+                span,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                total_tokens=token_usage,
+            )
+            if not choices:
+                return "", token_usage
+            message = choices[0].get("message") or {}
+            return str(message.get("content") or ""), token_usage
 
     def _truncate_planner_context(self, context: dict[str, Any]) -> dict[str, Any]:
         bounded: dict[str, Any] = {
             "repo_id": context.get("repo_id"),
+            "repo_memory": self._truncate_repo_memory(context.get("repo_memory")),
             "available_files": list((context.get("files") or {}).keys())[:20],
             "hypotheses": list(context.get("hypotheses") or [])[-8:],
             "evidence": list(context.get("evidence") or [])[-12:],
@@ -446,6 +526,11 @@ class OpenAICompatibleLLMProvider(BaseLLMProvider):
                 }
                 for item in list(context.get("retrieved_chunks") or [])[-12:]
                 if isinstance(item, dict)
+            ],
+            "code_graphs": [
+                self._truncate_code_graph(graph)
+                for graph in list(context.get("code_graphs") or [])[-4:]
+                if isinstance(graph, dict)
             ],
             "baseline_test_result": context.get("baseline_test_result"),
             "last_test_result": context.get("last_test_result"),
@@ -464,6 +549,56 @@ class OpenAICompatibleLLMProvider(BaseLLMProvider):
             remaining -= len(excerpt)
         bounded["file_context"] = file_context
         return bounded
+
+    def _truncate_repo_memory(self, raw_memory: Any) -> dict[str, Any]:
+        if not isinstance(raw_memory, dict):
+            return {}
+        data = raw_memory.get("data")
+        if not isinstance(data, dict):
+            data = {}
+
+        def bounded_list(name: str, limit: int) -> list[Any]:
+            value = data.get(name)
+            return value[:limit] if isinstance(value, list) else []
+
+        languages = data.get("languages")
+        dependencies = data.get("dependencies")
+        return {
+            "summary": self._truncate(str(raw_memory.get("summary") or ""), 1_200),
+            "languages": languages if isinstance(languages, dict) else {},
+            "modules": bounded_list("modules", 12),
+            "key_files": bounded_list("key_files", 12),
+            "dependencies": {
+                "frameworks": (
+                    dependencies.get("frameworks", [])[:12]
+                    if isinstance(dependencies, dict)
+                    and isinstance(dependencies.get("frameworks"), list)
+                    else []
+                ),
+                "dependencies": (
+                    dependencies.get("dependencies", [])[:24]
+                    if isinstance(dependencies, dict)
+                    and isinstance(dependencies.get("dependencies"), list)
+                    else []
+                ),
+            },
+            "symbols": bounded_list("symbols", 30),
+            "updated_at": raw_memory.get("updated_at"),
+        }
+
+    @staticmethod
+    def _truncate_code_graph(graph: dict[str, Any]) -> dict[str, Any]:
+        nodes = graph.get("nodes")
+        edges = graph.get("edges")
+        return {
+            "kind": graph.get("kind"),
+            "query": graph.get("path") or graph.get("symbol"),
+            "direction": graph.get("direction"),
+            "depth": graph.get("depth"),
+            "nodes": nodes[:40] if isinstance(nodes, list) else [],
+            "edges": edges[:80] if isinstance(edges, list) else [],
+            "truncated": bool(graph.get("truncated")),
+        }
 
     def _raise_for_status(self, response: httpx.Response) -> None:
         try:
