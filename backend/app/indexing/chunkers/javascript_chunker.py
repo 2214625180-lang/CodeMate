@@ -171,7 +171,10 @@ class JavaScriptTreeSitterChunker:
         return "function"
 
     def _looks_like_react_component(self, text: str) -> bool:
-        return bool(re.search(r"return\s*\(?\s*<", text) or "React.createElement" in text)
+        return bool(
+            re.search(r"(?:return|=>)\s*\(?\s*<", text)
+            or "React.createElement" in text
+        )
 
     def _extract_imports(self, content: str) -> list[str]:
         imports: list[str] = []
