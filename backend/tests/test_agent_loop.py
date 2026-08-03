@@ -198,3 +198,34 @@ def test_openai_compatible_planner_returns_only_validated_action_union(monkeypat
     )
     with pytest.raises(RuntimeError, match="violated the action schema"):
         planner.plan_next_action(issue="addition fails", context=context)
+
+
+def test_openai_planner_bounds_repo_memory_without_dropping_decision_inputs():
+    planner = OpenAICompatibleLLMProvider(
+        api_key="test-key",
+        base_url="https://llm.example/v1",
+        model="test-model",
+    )
+    bounded = planner._truncate_planner_context(
+        {
+            "repo_memory": {
+                "summary": "FastAPI API with PostgreSQL search.",
+                "data": {
+                    "languages": {"Python": 12},
+                    "modules": [{"path": "backend/app"}] * 20,
+                    "key_files": [{"path": "backend/pyproject.toml"}] * 20,
+                    "dependencies": {
+                        "frameworks": ["fastapi"] * 20,
+                        "dependencies": ["sqlalchemy"] * 30,
+                    },
+                    "symbols": [{"name": "search"}] * 40,
+                },
+            }
+        }
+    )
+
+    memory = bounded["repo_memory"]
+    assert memory["languages"] == {"Python": 12}
+    assert len(memory["modules"]) == 12
+    assert len(memory["dependencies"]["dependencies"]) == 24
+    assert len(memory["symbols"]) == 30

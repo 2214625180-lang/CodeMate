@@ -433,6 +433,7 @@ class OpenAICompatibleLLMProvider(BaseLLMProvider):
     def _truncate_planner_context(self, context: dict[str, Any]) -> dict[str, Any]:
         bounded: dict[str, Any] = {
             "repo_id": context.get("repo_id"),
+            "repo_memory": self._truncate_repo_memory(context.get("repo_memory")),
             "available_files": list((context.get("files") or {}).keys())[:20],
             "hypotheses": list(context.get("hypotheses") or [])[-8:],
             "evidence": list(context.get("evidence") or [])[-12:],
@@ -464,6 +465,42 @@ class OpenAICompatibleLLMProvider(BaseLLMProvider):
             remaining -= len(excerpt)
         bounded["file_context"] = file_context
         return bounded
+
+    def _truncate_repo_memory(self, raw_memory: Any) -> dict[str, Any]:
+        if not isinstance(raw_memory, dict):
+            return {}
+        data = raw_memory.get("data")
+        if not isinstance(data, dict):
+            data = {}
+
+        def bounded_list(name: str, limit: int) -> list[Any]:
+            value = data.get(name)
+            return value[:limit] if isinstance(value, list) else []
+
+        languages = data.get("languages")
+        dependencies = data.get("dependencies")
+        return {
+            "summary": self._truncate(str(raw_memory.get("summary") or ""), 1_200),
+            "languages": languages if isinstance(languages, dict) else {},
+            "modules": bounded_list("modules", 12),
+            "key_files": bounded_list("key_files", 12),
+            "dependencies": {
+                "frameworks": (
+                    dependencies.get("frameworks", [])[:12]
+                    if isinstance(dependencies, dict)
+                    and isinstance(dependencies.get("frameworks"), list)
+                    else []
+                ),
+                "dependencies": (
+                    dependencies.get("dependencies", [])[:24]
+                    if isinstance(dependencies, dict)
+                    and isinstance(dependencies.get("dependencies"), list)
+                    else []
+                ),
+            },
+            "symbols": bounded_list("symbols", 30),
+            "updated_at": raw_memory.get("updated_at"),
+        }
 
     def _raise_for_status(self, response: httpx.Response) -> None:
         try:

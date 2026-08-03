@@ -12,6 +12,7 @@ class FixAgentState(TypedDict, total=False):
     baseline_test_result: dict[str, Any]
     diagnostic_test_result: dict[str, Any]
     parsed_issue: dict[str, Any]
+    repo_memory: dict[str, Any]
     retrieved_chunks: list[dict[str, Any]]
     files: dict[str, str]
     external_context: list[dict[str, Any]]

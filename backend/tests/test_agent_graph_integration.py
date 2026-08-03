@@ -178,3 +178,39 @@ def test_full_agent_graph_retrieves_reflects_and_verifies_a_distinct_retry(tmp_p
     assert "search_code" in [step.tool_name for step in run.steps if step.step_type == "tool_call"]
     assert "find_symbol" in [step.tool_name for step in run.steps if step.step_type == "tool_call"]
     assert "return a + b" in (run.final_diff or "")
+
+
+def test_initial_agent_state_injects_repository_memory_into_the_planner_context(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'agent-memory.db'}")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine, expire_on_commit=False)()
+    repository = Repository(
+        id="repo-memory",
+        name="memory",
+        repo_url="https://example.com/memory.git",
+        memory_summary="A FastAPI service with a React client.",
+        memory_data={
+            "languages": {"Python": 20, "TypeScript": 10},
+            "modules": [{"path": "backend/app", "file_count": 12}],
+            "dependencies": {
+                "frameworks": ["fastapi", "react"],
+                "dependencies": ["sqlalchemy", "pytest"],
+            },
+            "symbols": [{"name": "create_app", "path": "backend/app/main.py"}],
+        },
+    )
+    run = AgentRun(
+        id="run-memory",
+        repo_id=repository.id,
+        user_input="Fix the failing API route",
+        status="pending",
+    )
+    db.add_all([repository, run])
+    db.commit()
+
+    service = AgentService(db)
+    state = service._initial_state(run)
+    context = service._planner_context(state)
+
+    assert state["repo_memory"]["summary"] == repository.memory_summary
+    assert context["repo_memory"]["data"]["modules"] == [{"path": "backend/app", "file_count": 12}]

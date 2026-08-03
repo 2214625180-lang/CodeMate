@@ -377,6 +377,7 @@ class AgentService:
             "verification_result": {},
             "iterations": 0,
             "files": {},
+            "repo_memory": self._repo_memory_for_state(run.repo_id),
             "retrieved_chunks": [],
             "current_action": {},
             "action_outcome": {},
@@ -1257,6 +1258,7 @@ class AgentService:
                 remaining_wall_time_seconds = 0.0
         return {
             "repo_id": state.get("repo_id"),
+            "repo_memory": state.get("repo_memory") or {},
             "files": state.get("files") or {},
             "retrieved_chunks": state.get("retrieved_chunks") or [],
             "hypotheses": state.get("hypotheses") or [],
@@ -1291,6 +1293,17 @@ class AgentService:
                 ),
                 "wall_time_seconds": remaining_wall_time_seconds,
             },
+        }
+
+    def _repo_memory_for_state(self, repo_id: str) -> dict:
+        repository = self.db.get(Repository, repo_id)
+        if repository is None:
+            return {}
+        updated_at = repository.memory_updated_at
+        return {
+            "summary": repository.memory_summary or "",
+            "data": repository.memory_data or {},
+            "updated_at": updated_at.isoformat() if updated_at else None,
         }
 
     def _rehydrate_checkpoint_workspace(
