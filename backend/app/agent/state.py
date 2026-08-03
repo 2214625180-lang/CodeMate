@@ -14,6 +14,7 @@ class FixAgentState(TypedDict, total=False):
     parsed_issue: dict[str, Any]
     repo_memory: dict[str, Any]
     retrieved_chunks: list[dict[str, Any]]
+    code_graphs: list[dict[str, Any]]
     files: dict[str, str]
     external_context: list[dict[str, Any]]
     mcp_tool_catalog: list[dict[str, Any]]

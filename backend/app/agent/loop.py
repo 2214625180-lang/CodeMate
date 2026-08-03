@@ -12,6 +12,8 @@ from app.agent.actions import (
     FindSymbol,
     Finish,
     GeneratePatch,
+    GetCallGraph,
+    GetImportGraph,
     ListFiles,
     PlanNextAction,
     ReadFile,
@@ -137,11 +139,14 @@ class LocalAgentExecutor:
         history = self._append_history(state, action, status="completed", observation=observation)
         files = dict(state.get("files") or {})
         retrieved_chunks = list(state.get("retrieved_chunks") or [])
+        code_graphs = list(state.get("code_graphs") or [])
         diagnostic_test_result = dict(state.get("diagnostic_test_result") or {})
         if isinstance(action, ReadFile):
             files[action.path] = str(result.get("content") or "")
         elif isinstance(action, (SearchCode, FindSymbol, FindReferences)):
             retrieved_chunks = result
+        elif isinstance(action, (GetImportGraph, GetCallGraph)):
+            code_graphs = [*code_graphs, result][-4:]
         elif isinstance(action, RunTests):
             diagnostic_test_result = result
 
@@ -171,6 +176,7 @@ class LocalAgentExecutor:
             "finish_reason": finish_reason,
             "files": files,
             "retrieved_chunks": retrieved_chunks,
+            "code_graphs": code_graphs,
             "diagnostic_test_result": diagnostic_test_result,
             "diagnosis": self._diagnosis(hypotheses, evidence),
         }
@@ -187,6 +193,18 @@ class LocalAgentExecutor:
             return self.tools.find_symbol(action.symbol)
         if isinstance(action, FindReferences):
             return self.tools.find_references(action.symbol)
+        if isinstance(action, GetImportGraph):
+            return self.tools.get_import_graph(
+                action.path,
+                direction=action.direction,
+                depth=action.depth,
+            )
+        if isinstance(action, GetCallGraph):
+            return self.tools.get_call_graph(
+                action.symbol,
+                direction=action.direction,
+                depth=action.depth,
+            )
         if isinstance(action, RunTests):
             return self.tools.run_tests(action.command, phase="diagnostic")
         raise RuntimeError(f"Unsupported local action: {type(action).__name__}")
@@ -312,7 +330,12 @@ class LocalAgentExecutor:
         }
         made_progress = bool(result)
         if isinstance(result, dict):
-            made_progress = bool(result.get("content") or result.get("tests_ran"))
+            made_progress = bool(
+                result.get("content")
+                or result.get("tests_ran")
+                or result.get("nodes")
+                or result.get("edges")
+            )
         return item, fingerprint, made_progress
 
     @staticmethod
@@ -328,6 +351,11 @@ class LocalAgentExecutor:
                 f"Diagnostic tests command={result.get('command')!r}, "
                 f"tests_ran={bool(result.get('tests_ran'))}, "
                 f"exit_code={result.get('exit_code')}, passed={bool(result.get('passed'))}."
+            )
+        if isinstance(action, (GetImportGraph, GetCallGraph)) and isinstance(result, dict):
+            return (
+                f"{action.action} returned {len(result.get('nodes') or [])} node(s) and "
+                f"{len(result.get('edges') or [])} edge(s)."
             )
         if isinstance(result, list):
             paths: list[str] = []

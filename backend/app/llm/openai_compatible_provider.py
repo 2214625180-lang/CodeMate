@@ -448,6 +448,11 @@ class OpenAICompatibleLLMProvider(BaseLLMProvider):
                 for item in list(context.get("retrieved_chunks") or [])[-12:]
                 if isinstance(item, dict)
             ],
+            "code_graphs": [
+                self._truncate_code_graph(graph)
+                for graph in list(context.get("code_graphs") or [])[-4:]
+                if isinstance(graph, dict)
+            ],
             "baseline_test_result": context.get("baseline_test_result"),
             "last_test_result": context.get("last_test_result"),
             "resolved_test_command": context.get("resolved_test_command"),
@@ -500,6 +505,20 @@ class OpenAICompatibleLLMProvider(BaseLLMProvider):
             },
             "symbols": bounded_list("symbols", 30),
             "updated_at": raw_memory.get("updated_at"),
+        }
+
+    @staticmethod
+    def _truncate_code_graph(graph: dict[str, Any]) -> dict[str, Any]:
+        nodes = graph.get("nodes")
+        edges = graph.get("edges")
+        return {
+            "kind": graph.get("kind"),
+            "query": graph.get("path") or graph.get("symbol"),
+            "direction": graph.get("direction"),
+            "depth": graph.get("depth"),
+            "nodes": nodes[:40] if isinstance(nodes, list) else [],
+            "edges": edges[:80] if isinstance(edges, list) else [],
+            "truncated": bool(graph.get("truncated")),
         }
 
     def _raise_for_status(self, response: httpx.Response) -> None:

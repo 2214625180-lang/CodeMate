@@ -220,7 +220,15 @@ def test_openai_planner_bounds_repo_memory_without_dropping_decision_inputs():
                     },
                     "symbols": [{"name": "search"}] * 40,
                 },
-            }
+            },
+            "code_graphs": [
+                {
+                    "kind": "call",
+                    "symbol": "search",
+                    "nodes": [{"id": "symbol:search"}] * 50,
+                    "edges": [{"from": "symbol:caller", "to": "symbol:search"}] * 100,
+                }
+            ],
         }
     )
 
@@ -229,3 +237,5 @@ def test_openai_planner_bounds_repo_memory_without_dropping_decision_inputs():
     assert len(memory["modules"]) == 12
     assert len(memory["dependencies"]["dependencies"]) == 24
     assert len(memory["symbols"]) == 30
+    assert len(bounded["code_graphs"][0]["nodes"]) == 40
+    assert len(bounded["code_graphs"][0]["edges"]) == 80
