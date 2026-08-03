@@ -9,9 +9,7 @@ export type RepositoryStatus =
 export type Repository = {
   id: string;
   name: string;
-  tenant_id: string | null;
   repo_url: string;
-  local_path: string | null;
   status: RepositoryStatus;
   error_message: string | null;
   language_summary: Record<string, number>;

@@ -2,6 +2,7 @@ import json
 import time
 from collections.abc import Iterator
 from datetime import datetime, timezone
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -9,30 +10,44 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.agent.verification import TERMINAL_AGENT_RUN_STATUSES
+from app.api.auth import ProductPrincipal, get_product_principal
 from app.core.database import SessionLocal, get_db
 from app.models.agent_run import AgentRun
 from app.models.agent_step import AgentStep
 from app.schemas.runs import AgentRunRead, RunFeedbackRequest, RunFeedbackResponse
 
 router = APIRouter(prefix="/runs", tags=["runs"])
+ProductUser = Annotated[ProductPrincipal, Depends(get_product_principal)]
 
 
-@router.get("/{run_id}", response_model=AgentRunRead)
-def get_run(run_id: str, db: Session = Depends(get_db)):
-    run = db.get(AgentRun, run_id, options=[selectinload(AgentRun.steps)])
+def get_owned_run(
+    db: Session,
+    run_id: str,
+    owner_id: str,
+    *,
+    include_steps: bool = False,
+) -> AgentRun:
+    statement = select(AgentRun).where(AgentRun.id == run_id).where(AgentRun.owner_id == owner_id)
+    if include_steps:
+        statement = statement.options(selectinload(AgentRun.steps))
+    run = db.execute(statement).scalar_one_or_none()
     if run is None:
+        # Match the repository boundary: no cross-user identifier oracle.
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
     return run
 
 
+@router.get("/{run_id}", response_model=AgentRunRead)
+def get_run(run_id: str, principal: ProductUser, db: Session = Depends(get_db)):
+    return get_owned_run(db, run_id, principal.owner_id, include_steps=True)
+
+
 @router.get("/{run_id}/trace")
-def stream_run_trace(run_id: str, db: Session = Depends(get_db)):
-    run = db.get(AgentRun, run_id)
-    if run is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
+def stream_run_trace(run_id: str, principal: ProductUser, db: Session = Depends(get_db)):
+    get_owned_run(db, run_id, principal.owner_id)
 
     return StreamingResponse(
-        _trace_events(run_id),
+        _trace_events(run_id, principal.owner_id),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -45,11 +60,10 @@ def stream_run_trace(run_id: str, db: Session = Depends(get_db)):
 def submit_run_feedback(
     run_id: str,
     payload: RunFeedbackRequest,
+    principal: ProductUser,
     db: Session = Depends(get_db),
 ):
-    run = db.get(AgentRun, run_id)
-    if run is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
+    run = get_owned_run(db, run_id, principal.owner_id)
 
     run.feedback_status = payload.status
     run.feedback_note = payload.note
@@ -65,7 +79,7 @@ def submit_run_feedback(
     )
 
 
-def _trace_events(run_id: str) -> Iterator[str]:
+def _trace_events(run_id: str, owner_id: str) -> Iterator[str]:
     sent_ids: set[str] = set()
     allowed_events = {
         "inspection",
@@ -94,7 +108,11 @@ def _trace_events(run_id: str) -> Iterator[str]:
     while True:
         db = SessionLocal()
         try:
-            run = db.get(AgentRun, run_id)
+            run = db.execute(
+                select(AgentRun)
+                .where(AgentRun.id == run_id)
+                .where(AgentRun.owner_id == owner_id)
+            ).scalar_one_or_none()
             if run is None:
                 yield _sse("error", {"message": "Run not found"})
                 return

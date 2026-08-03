@@ -78,9 +78,9 @@ flowchart LR
 | 中小型 TypeScript、JavaScript、Python，少量 Vue fixture | 超大 monorepo、多仓库事务和任意语言 |
 | 有失败测试或可执行复现命令的局部修复 | 大规模重构、自动合并 PR、任意业务需求实现 |
 | 可审查 patch、显式失败状态、回归验证 | 未执行测试时的“修复成功” |
-| 本地 Docker 沙箱与生产执行平面对接 | 在本仓库中声明已完成工业级多租户托管平台 |
+| 本地/单用户开发工具；受保护部署中的签名用户隔离 | 在本仓库中声明已完成工业级多租户托管平台 |
 
-主要限制是：真实模型 fix benchmark 尚未在当前环境完成，性能指标因此保持 `not_run`；Demo 需要用户自己的有效模型凭据；本地 Demo 为了运行禁网测试容器，会仅向 worker 挂载本地 Docker socket，不能直接当作生产部署拓扑。
+主要限制是：真实模型 fix benchmark 尚未在当前环境完成，性能指标因此保持 `not_run`；Demo 需要用户自己的有效模型凭据；本地 Demo 为了运行禁网测试容器，会仅向 worker 挂载本地 Docker socket，不能直接当作生产部署拓扑。仓库导入在受保护部署中要求签名身份、显式 Git host allowlist 和外部 egress 策略；本仓库不把它包装成完整的多租户 SaaS。
 
 ## 运行与验证
 

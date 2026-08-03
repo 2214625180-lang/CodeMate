@@ -15,6 +15,9 @@ class AgentRun(Base):
     repo_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    owner_id: Mapped[str] = mapped_column(
+        String(320), nullable=False, default="local:local-dev", index=True
+    )
     task_type: Mapped[str] = mapped_column(String(32), nullable=False, default="fix")
     tenant_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("mcp_tenants.id", ondelete="SET NULL"), nullable=True, index=True

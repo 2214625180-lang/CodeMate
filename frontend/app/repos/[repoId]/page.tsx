@@ -206,7 +206,10 @@ export default function RepoDetailPage() {
             label="Indexed at"
             value={repository.indexed_at ? new Date(repository.indexed_at).toLocaleString() : "n/a"}
           />
-          <Metric label="Workspace" value={repository.local_path ? "created" : "pending"} />
+          <Metric
+            label="Workspace"
+            value={repository.status === "indexed" ? "ready" : repository.status}
+          />
         </div>
       </section>
 

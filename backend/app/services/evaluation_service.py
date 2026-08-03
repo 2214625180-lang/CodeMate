@@ -527,8 +527,12 @@ class EvaluationService:
         agent_run_id: str | None = None
         try:
             agent_service = AgentService(self.db)
+            repository = self.db.get(Repository, repo_id)
+            if repository is None:
+                raise ValueError("Repository not found")
             agent_run = agent_service.create_fix_run(
                 repo_id=repo_id,
+                owner_id=repository.owner_id,
                 issue=issue,
                 test_command=test_command,
             )

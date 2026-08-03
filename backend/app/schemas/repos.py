@@ -1,7 +1,8 @@
 from datetime import datetime
 from typing import Literal
+from urllib.parse import urlsplit, urlunsplit
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 
 RepositoryStatus = Literal["pending", "cloning", "parsing", "embedding", "indexed", "failed"]
@@ -16,9 +17,7 @@ class RepositoryRead(BaseModel):
 
     id: str
     name: str
-    tenant_id: str | None
     repo_url: str
-    local_path: str | None
     status: RepositoryStatus
     error_message: str | None
     language_summary: dict
@@ -28,6 +27,22 @@ class RepositoryRead(BaseModel):
     indexed_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+    @field_serializer("repo_url")
+    def redact_legacy_repository_userinfo(self, value: str) -> str:
+        """Avoid reflecting credentials from repository rows created before validation."""
+        parsed = urlsplit(value)
+        if not parsed.scheme or not parsed.hostname:
+            return value
+        host = parsed.hostname
+        if ":" in host:
+            host = f"[{host}]"
+        try:
+            port = parsed.port
+        except ValueError:
+            return value
+        netloc = f"{host}:{port}" if port is not None else host
+        return urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment))
 
 
 class RepositoryStatusRead(BaseModel):

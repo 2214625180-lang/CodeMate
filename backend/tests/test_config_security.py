@@ -17,6 +17,8 @@ def secure_audit_config():
         "rq_worker_readiness_required": True,
         "mcp_registry_allowed_hosts": "mcp.example.com,oauth.example.com",
         "evaluation_admin_token": "a" * 32,
+        "product_api_token": "p" * 32,
+        "repository_allowed_hosts": "github.com,gitlab.com",
         "mcp_allowed_repo_ids": "repo-production",
         "mcp_compliance_enabled": True,
         "mcp_sandbox_enabled": True,
@@ -68,6 +70,19 @@ def test_local_defaults_signed_browser_identity_to_false(monkeypatch):
 
     settings.validate_security_config()
     assert settings.signed_browser_identity_required is False
+
+
+def test_production_requires_product_token_and_git_host_allowlist(monkeypatch):
+    monkeypatch.setenv("CODEMATE_REQUIRE_SIGNED_BROWSER_IDENTITY", "false")
+    missing_token = secure_audit_config()
+    missing_token["product_api_token"] = None
+    with pytest.raises(RuntimeError, match="PRODUCT_API_TOKEN"):
+        Settings(_env_file=None, app_env="production", **missing_token).validate_security_config()
+
+    missing_hosts = secure_audit_config()
+    missing_hosts["repository_allowed_hosts"] = ""
+    with pytest.raises(RuntimeError, match="REPOSITORY_ALLOWED_HOSTS"):
+        Settings(_env_file=None, app_env="production", **missing_hosts).validate_security_config()
 
 
 def test_agent_loop_budgets_must_be_positive():

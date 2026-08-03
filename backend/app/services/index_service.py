@@ -1,4 +1,5 @@
 import hashlib
+import os
 import shutil
 import subprocess
 from collections import Counter
@@ -19,6 +20,7 @@ from app.models.code_chunk import CodeChunk
 from app.models.code_file import CodeFile
 from app.models.repository import Repository
 from app.services.repo_memory_service import RepoMemoryService
+from app.services.repo_service import validate_git_url
 from app.vectorstore.qdrant_store import QdrantVectorStore, make_chunk_point
 
 
@@ -49,11 +51,15 @@ class IndexService:
                 self._index_full(repository)
             else:
                 self._index_incremental(repository)
-        except Exception as exc:  # noqa: BLE001 - preserve failure reason for UI.
+        except Exception as exc:  # noqa: BLE001 - preserve safe failure reason for UI.
             self.db.rollback()
             failed_repo = self.db.get(Repository, repo_id)
             if failed_repo is not None:
-                self._update_repository(failed_repo, status="failed", error_message=str(exc))
+                self._update_repository(
+                    failed_repo,
+                    status="failed",
+                    error_message=self._safe_index_error_message(exc),
+                )
 
     def _index_full(self, repository: Repository) -> None:
         target_workspace = self._workspace_path(repository.id)
@@ -123,7 +129,10 @@ class IndexService:
 
         self._update_repository(repository, status="cloning", error_message=None)
         try:
-            shutil.copytree(target_workspace, staging_workspace)
+            # Keep symlinks as symlinks. Dereferencing an untrusted checkout here
+            # could copy a host file into the next index even though the scanner
+            # later skips symlink entries.
+            shutil.copytree(target_workspace, staging_workspace, symlinks=True)
             self._update_workspace(staging_workspace)
 
             commit_hash = self._read_commit_hash(staging_workspace)
@@ -231,36 +240,71 @@ class IndexService:
             pass
 
     def _clone_repository(self, repo_url: str, workspace: Path) -> None:
-        result = subprocess.run(
-            ["git", "clone", "--depth", "1", repo_url, str(workspace)],
-            capture_output=True,
-            text=True,
-            timeout=settings.clone_timeout_seconds,
-            check=False,
-        )
+        # Resolve immediately before the transport starts as a second DNS
+        # rebinding check. The managed deployment must additionally apply its
+        # egress policy at the network boundary.
+        validated = validate_git_url(repo_url, resolve_host=True)
+        try:
+            result = subprocess.run(
+                [
+                    "git",
+                    "clone",
+                    "--depth",
+                    "1",
+                    "--single-branch",
+                    "--filter=blob:none",
+                    "--no-checkout",
+                    "--no-recurse-submodules",
+                    "--config",
+                    "protocol.file.allow=never",
+                    "--",
+                    validated.normalized_url,
+                    str(workspace),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=settings.clone_timeout_seconds,
+                check=False,
+                env=self._safe_git_environment(),
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("Repository clone timed out.") from exc
         if result.returncode != 0:
-            message = result.stderr.strip() or result.stdout.strip() or "git clone failed"
-            raise RuntimeError(message)
+            raise RuntimeError("Repository clone failed. Check repository access and URL.")
+
+        self._assert_checkout_budget(workspace)
+        checkout = self._run_git(workspace, ["checkout", "--force"])
+        if checkout.returncode != 0:
+            raise RuntimeError("Repository checkout failed.")
+        self._assert_workspace_budget(workspace)
 
     def _update_workspace(self, workspace: Path) -> None:
-        fetch = self._run_git(workspace, ["fetch", "--all", "--prune"])
+        origin = self._run_git(workspace, ["remote", "get-url", "origin"])
+        if origin.returncode != 0:
+            raise RuntimeError("Repository remote could not be verified.")
+        validate_git_url(origin.stdout.strip(), resolve_host=True)
+        fetch = self._run_git(workspace, ["fetch", "--all", "--prune", "--filter=blob:none"])
         if fetch.returncode != 0:
-            message = fetch.stderr.strip() or fetch.stdout.strip() or "git fetch failed"
-            raise RuntimeError(message)
+            raise RuntimeError("Repository fetch failed.")
 
-        pull = self._run_git(workspace, ["pull", "--ff-only"])
-        if pull.returncode != 0:
-            message = pull.stderr.strip() or pull.stdout.strip() or "git pull failed"
-            raise RuntimeError(message)
+        self._assert_checkout_budget(workspace, revision="FETCH_HEAD")
+        merge = self._run_git(workspace, ["merge", "--ff-only", "FETCH_HEAD"])
+        if merge.returncode != 0:
+            raise RuntimeError("Repository update failed.")
+        self._assert_workspace_budget(workspace)
 
     def _run_git(self, workspace: Path, args: list[str]) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            ["git", "-C", str(workspace), *args],
-            capture_output=True,
-            text=True,
-            timeout=settings.clone_timeout_seconds,
-            check=False,
-        )
+        try:
+            return subprocess.run(
+                ["git", "-C", str(workspace), "-c", "protocol.file.allow=never", *args],
+                capture_output=True,
+                text=True,
+                timeout=settings.clone_timeout_seconds,
+                check=False,
+                env=self._safe_git_environment(),
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("Repository Git operation timed out.") from exc
 
     def _read_commit_hash(self, workspace: Path) -> str | None:
         result = subprocess.run(
@@ -282,19 +326,27 @@ class IndexService:
         return self._persist_scanned_files(repo_id, self._scan_source_files(workspace))
 
     def _scan_source_files(self, workspace: Path) -> list[ScannedCodeFile]:
+        root = workspace.resolve()
         scanned_files: list[ScannedCodeFile] = []
-        for path in iter_source_files(workspace):
+        for path in iter_source_files(root):
+            if path.is_symlink():
+                continue
+            resolved_path = path.resolve()
+            try:
+                resolved_path.relative_to(root)
+            except ValueError:
+                continue
             language = detect_language(path)
             if language is None:
                 continue
 
-            raw = path.read_bytes()
+            raw = resolved_path.read_bytes()
             content = raw.decode("utf-8", errors="ignore")
-            relative_path = path.relative_to(workspace).as_posix()
-            parsed_file = get_chunker(language, path).parse(path, content)
+            relative_path = resolved_path.relative_to(root).as_posix()
+            parsed_file = get_chunker(language, resolved_path).parse(resolved_path, content)
             scanned_files.append(
                 ScannedCodeFile(
-                    path=path,
+                    path=resolved_path,
                     relative_path=relative_path,
                     language=language,
                     raw=raw,
@@ -304,6 +356,79 @@ class IndexService:
                 )
             )
         return scanned_files
+
+    def _assert_checkout_budget(self, workspace: Path, *, revision: str = "HEAD") -> None:
+        tree = self._run_git(workspace, ["ls-tree", "-r", "-l", "-z", revision])
+        if tree.returncode != 0:
+            raise RuntimeError("Repository contents could not be inspected.")
+
+        file_count = 0
+        total_bytes = 0
+        for record in tree.stdout.split("\0"):
+            if not record:
+                continue
+            metadata, separator, _path = record.partition("\t")
+            if not separator:
+                raise RuntimeError("Repository contents could not be inspected.")
+            parts = metadata.split()
+            if len(parts) != 4:
+                raise RuntimeError("Repository contents could not be inspected.")
+            mode, object_type, _object_id, size = parts
+            if mode == "160000" or object_type == "commit":
+                raise RuntimeError("Repositories containing submodules are not supported.")
+            if object_type != "blob":
+                continue
+            try:
+                object_size = int(size)
+            except ValueError as exc:
+                raise RuntimeError("Repository contents could not be inspected.") from exc
+            file_count += 1
+            total_bytes += object_size
+            if (
+                file_count > settings.repository_max_clone_files
+                or total_bytes > settings.repository_max_clone_bytes
+            ):
+                raise RuntimeError("Repository exceeds the configured clone budget.")
+
+    def _assert_workspace_budget(self, workspace: Path) -> None:
+        file_count = 0
+        total_bytes = 0
+        for root, _directories, filenames in os.walk(workspace, followlinks=False):
+            for filename in filenames:
+                path = Path(root, filename)
+                try:
+                    stat = path.lstat()
+                except OSError as exc:
+                    raise RuntimeError("Repository workspace could not be inspected.") from exc
+                if path.is_symlink():
+                    continue
+                file_count += 1
+                total_bytes += stat.st_size
+                if (
+                    file_count > settings.repository_max_clone_files
+                    or total_bytes > settings.repository_max_clone_bytes
+                ):
+                    raise RuntimeError("Repository exceeds the configured clone budget.")
+
+    @staticmethod
+    def _safe_git_environment() -> dict[str, str]:
+        allowed_protocols = "https:ssh"
+        if settings.repository_allow_http:
+            allowed_protocols = f"http:{allowed_protocols}"
+        return {
+            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "LANG": "C.UTF-8",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_ASKPASS": os.devnull,
+            "GIT_LFS_SKIP_SMUDGE": "1",
+            "GIT_ALLOW_PROTOCOL": allowed_protocols,
+            "GIT_SSH_COMMAND": (
+                "ssh -oBatchMode=yes -oStrictHostKeyChecking=yes "
+                "-oProxyCommand=none"
+            ),
+        }
 
     def _persist_scanned_files(
         self,
@@ -449,6 +574,19 @@ class IndexService:
             self.vector_store.delete_points(point_ids)
         except Exception:
             pass
+
+    @staticmethod
+    def _safe_index_error_message(exc: Exception) -> str:
+        """Expose only errors authored by repository guardrails.
+
+        Git servers and embedding providers can include remote URLs, request
+        headers, or credentials in their exception text. Those diagnostics are
+        intentionally not stored on a user-visible Repository row.
+        """
+        message = str(exc).strip()
+        if message.startswith("Repository "):
+            return message
+        return "Repository indexing failed. Check repository contents and configuration."
 
     @staticmethod
     def _count_lines(content: str) -> int:

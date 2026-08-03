@@ -13,6 +13,9 @@ class Repository(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    owner_id: Mapped[str] = mapped_column(
+        String(320), nullable=False, default="local:local-dev", index=True
+    )
     tenant_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("mcp_tenants.id", ondelete="SET NULL"), nullable=True, index=True
     )

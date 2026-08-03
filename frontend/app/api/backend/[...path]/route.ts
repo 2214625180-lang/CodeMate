@@ -7,6 +7,7 @@ import {
   ADMIN_SESSION_COOKIE,
   adminSessionState,
   backendEvaluationApiToken,
+  backendProductApiToken,
   canAccessEvaluationProxy,
   canMutateEvaluation
 } from "@/lib/adminSession";
@@ -69,15 +70,17 @@ async function proxyBackend(request: NextRequest, context: RouteContext) {
     isMCPRegistryPath(backendPath) ||
     isMCPTenancyPath(backendPath) ||
     isMCPQuotaPath(backendPath);
-  const evaluationState = evaluationPath
+  const productPath = isProductPath(backendPath);
+  const sessionState = evaluationPath || productPath
     ? adminSessionState((await cookies()).get(ADMIN_SESSION_COOKIE)?.value)
     : null;
 
-  if (evaluationState) {
-    const state = evaluationState;
+  if (sessionState) {
+    const state = sessionState;
+    const eventNamespace = evaluationPath ? "evaluation" : "product";
     if (state.misconfigured) {
       await auditSecurityEvent({
-        eventType: "evaluation_proxy_blocked",
+        eventType: `${eventNamespace}_proxy_blocked`,
         outcome: "blocked",
         actor: actorFromSession(state),
         method: request.method,
@@ -88,14 +91,14 @@ async function proxyBackend(request: NextRequest, context: RouteContext) {
       });
       return NextResponse.json(
         {
-          detail: state.detail ?? "Evaluation authentication is not configured correctly."
+          detail: state.detail ?? "CodeMate authentication is not configured correctly."
         },
         { status: 503 }
       );
     }
     if (!canAccessEvaluationProxy(state)) {
       await auditSecurityEvent({
-        eventType: "evaluation_proxy_unauthenticated",
+        eventType: `${eventNamespace}_proxy_unauthenticated`,
         outcome: "blocked",
         actor: actorFromSession(state),
         method: request.method,
@@ -104,15 +107,16 @@ async function proxyBackend(request: NextRequest, context: RouteContext) {
         reason: "session_required",
         ...requestAuditFields(request)
       });
-      return NextResponse.json({ detail: "Evaluation session required" }, { status: 401 });
+      return NextResponse.json({ detail: "CodeMate session required" }, { status: 401 });
     }
     if (
+      evaluationPath &&
       isEvaluationMutation(request.method) &&
       !isDelegatedAuthorizationStart(backendPath) &&
       !canMutateEvaluation(state)
     ) {
       await auditSecurityEvent({
-        eventType: "evaluation_proxy_forbidden",
+        eventType: `${eventNamespace}_proxy_forbidden`,
         outcome: "blocked",
         actor: actorFromSession(state),
         method: request.method,
@@ -144,14 +148,14 @@ async function proxyBackend(request: NextRequest, context: RouteContext) {
     if (evaluationToken) {
       headers.set("authorization", `Bearer ${evaluationToken}`);
     }
-    if (evaluationState?.role) {
-      headers.set("x-codemate-evaluation-role", evaluationState.role);
+    if (sessionState?.role) {
+      headers.set("x-codemate-evaluation-role", sessionState.role);
     }
-    if (evaluationState?.user) {
-      headers.set("x-codemate-evaluation-user", evaluationState.user.login);
-      headers.set("x-codemate-evaluation-provider", evaluationState.user.provider);
+    if (sessionState?.user) {
+      headers.set("x-codemate-evaluation-user", sessionState.user.login);
+      headers.set("x-codemate-evaluation-provider", sessionState.user.provider);
     }
-    if (evaluationState?.role && evaluationState.user) {
+    if (sessionState?.role && sessionState.user) {
       const timestamp = Math.floor(Date.now() / 1000).toString();
       const nonce = randomBytes(24).toString("base64url");
       const pathWithQuery = `${backendPath}${request.nextUrl.search}`;
@@ -164,9 +168,36 @@ async function proxyBackend(request: NextRequest, context: RouteContext) {
           pathWithQuery,
           timestamp,
           nonce,
-          role: evaluationState.role,
-          login: evaluationState.user.login,
-          provider: evaluationState.user.provider
+          role: sessionState.role,
+          login: sessionState.user.login,
+          provider: sessionState.user.provider
+        })
+      );
+    }
+  }
+
+  if (productPath) {
+    const productToken = backendProductApiToken();
+    if (productToken) {
+      headers.set("authorization", `Bearer ${productToken}`);
+    }
+    if (sessionState?.user) {
+      const timestamp = Math.floor(Date.now() / 1000).toString();
+      const nonce = randomBytes(24).toString("base64url");
+      const pathWithQuery = `${backendPath}${request.nextUrl.search}`;
+      headers.set("x-codemate-product-user", sessionState.user.login);
+      headers.set("x-codemate-product-provider", sessionState.user.provider);
+      headers.set("x-codemate-product-identity-timestamp", timestamp);
+      headers.set("x-codemate-product-identity-nonce", nonce);
+      headers.set(
+        "x-codemate-product-identity-signature",
+        signProductIdentity({
+          method: request.method,
+          pathWithQuery,
+          timestamp,
+          nonce,
+          login: sessionState.user.login,
+          provider: sessionState.user.provider
         })
       );
     }
@@ -182,11 +213,11 @@ async function proxyBackend(request: NextRequest, context: RouteContext) {
   }
 
   const response = await fetch(targetUrl, init);
-  if (evaluationState) {
+  if (sessionState) {
     await auditSecurityEvent({
-      eventType: "evaluation_proxy_request",
+      eventType: evaluationPath ? "evaluation_proxy_request" : "product_proxy_request",
       outcome: response.ok ? "success" : "failure",
-      actor: actorFromSession(evaluationState),
+      actor: actorFromSession(sessionState),
       method: request.method,
       path: backendPath,
       status: response.status,
@@ -228,6 +259,10 @@ function isMCPTenancyPath(path: string): boolean {
 
 function isMCPQuotaPath(path: string): boolean {
   return path === "/mcp-quotas" || path.startsWith("/mcp-quotas/");
+}
+
+function isProductPath(path: string): boolean {
+  return path === "/repos" || path.startsWith("/repos/") || path.startsWith("/runs/");
 }
 
 function isDelegatedAuthorizationStart(path: string): boolean {
@@ -282,6 +317,41 @@ function proxyIdentitySecret(): string {
     process.env.CODEMATE_PROXY_IDENTITY_SECRET ||
     process.env.PROXY_IDENTITY_SECRET ||
     backendEvaluationApiToken()
+  ).trim();
+}
+
+function signProductIdentity({
+  method,
+  pathWithQuery,
+  timestamp,
+  nonce,
+  login,
+  provider
+}: {
+  method: string;
+  pathWithQuery: string;
+  timestamp: string;
+  nonce: string;
+  login: string;
+  provider: string;
+}): string {
+  const payload = [
+    "v1",
+    timestamp.trim(),
+    nonce.trim(),
+    method.toUpperCase(),
+    pathWithQuery,
+    login.trim(),
+    provider.trim()
+  ].join("\n");
+  return createHmac("sha256", productIdentitySecret()).update(payload).digest("base64url");
+}
+
+function productIdentitySecret(): string {
+  return (
+    process.env.CODEMATE_PRODUCT_IDENTITY_SECRET ||
+    process.env.PRODUCT_IDENTITY_SECRET ||
+    backendProductApiToken()
   ).trim();
 }
 

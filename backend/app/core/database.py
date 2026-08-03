@@ -40,6 +40,11 @@ def ensure_phase2_columns() -> None:
     table_names = set(inspector.get_table_names())
 
     if "repositories" in table_names:
+        _ensure_column(
+            "repositories",
+            "owner_id",
+            "owner_id VARCHAR(320) NOT NULL DEFAULT 'local:local-dev'",
+        )
         _ensure_column("repositories", "tenant_id", "tenant_id VARCHAR(36)")
         _ensure_column(
             "repositories",
@@ -70,6 +75,11 @@ def ensure_phase2_columns() -> None:
         )
 
     if "agent_runs" in table_names:
+        _ensure_column(
+            "agent_runs",
+            "owner_id",
+            "owner_id VARCHAR(320) NOT NULL DEFAULT 'local:local-dev'",
+        )
         _ensure_column("agent_runs", "tenant_id", "tenant_id VARCHAR(36)")
         _ensure_column(
             "agent_runs", "principal_type", "principal_type VARCHAR(32) NOT NULL DEFAULT 'agent'"

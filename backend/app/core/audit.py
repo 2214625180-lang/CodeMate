@@ -94,37 +94,15 @@ def backend_evaluation_audit_record(
     duration_ms: float,
     reason: str | None = None,
 ) -> dict[str, Any]:
-    principal = getattr(request.state, "evaluation_principal", None)
+    principal = getattr(request.state, "product_principal", None) or getattr(
+        request.state, "evaluation_principal", None
+    )
     auth_method = getattr(principal, "auth_method", None)
     token_kind = getattr(principal, "token_kind", None)
     return {
         "id": str(uuid4()),
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "eventType": (
-            "backend_mcp_quota_request"
-            if is_mcp_quota_path(request.url.path)
-            else (
-                "backend_mcp_tenancy_request"
-                if is_mcp_tenancy_path(request.url.path)
-                else (
-                    "backend_mcp_registry_request"
-                    if is_mcp_registry_path(request.url.path)
-                    else (
-                        "backend_mcp_operations_request"
-                        if is_mcp_operations_path(request.url.path)
-                        else (
-                            "backend_mcp_execution_request"
-                            if is_mcp_execution_path(request.url.path)
-                            else (
-                                "backend_mcp_approval_request"
-                                if is_mcp_approval_path(request.url.path)
-                                else "backend_evaluation_request"
-                            )
-                        )
-                    )
-                )
-            )
-        ),
+        "eventType": backend_request_event_type(request.url.path),
         "outcome": audit_outcome(status_code),
         "actor": {
             "provider": getattr(principal, "provider", "unknown"),
@@ -203,9 +181,14 @@ def is_mcp_quota_path(path: str) -> bool:
     return path == "/mcp-quotas" or path.startswith("/mcp-quotas/")
 
 
+def is_product_path(path: str) -> bool:
+    return path == "/repos" or path.startswith("/repos/") or path.startswith("/runs/")
+
+
 def is_security_audit_path(path: str) -> bool:
     return (
-        is_evaluation_path(path)
+        is_product_path(path)
+        or is_evaluation_path(path)
         or is_mcp_approval_path(path)
         or is_mcp_execution_path(path)
         or is_mcp_operations_path(path)
@@ -213,6 +196,24 @@ def is_security_audit_path(path: str) -> bool:
         or is_mcp_tenancy_path(path)
         or is_mcp_quota_path(path)
     )
+
+
+def backend_request_event_type(path: str) -> str:
+    if is_product_path(path):
+        return "backend_product_request"
+    if is_mcp_quota_path(path):
+        return "backend_mcp_quota_request"
+    if is_mcp_tenancy_path(path):
+        return "backend_mcp_tenancy_request"
+    if is_mcp_registry_path(path):
+        return "backend_mcp_registry_request"
+    if is_mcp_operations_path(path):
+        return "backend_mcp_operations_request"
+    if is_mcp_execution_path(path):
+        return "backend_mcp_execution_request"
+    if is_mcp_approval_path(path):
+        return "backend_mcp_approval_request"
+    return "backend_evaluation_request"
 
 
 def audit_outcome(status_code: int) -> str:

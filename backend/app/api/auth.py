@@ -30,6 +30,20 @@ class EvaluationServiceToken:
     token: str
 
 
+@dataclass(frozen=True)
+class ProductPrincipal:
+    """Authenticated owner for the single-workspace product API.
+
+    This is deliberately separate from MCP tenants: one owner only sees the
+    repositories and Agent Runs created under the same signed identity.
+    """
+
+    owner_id: str
+    login: str
+    provider: str
+    auth_method: Literal["local", "token"]
+
+
 def get_evaluation_principal(
     request: Request,
     authorization: Annotated[str | None, Header()] = None,
@@ -113,6 +127,115 @@ def get_evaluation_principal(
         detail="Evaluation API token required",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+
+def get_product_principal(
+    request: Request,
+    authorization: Annotated[str | None, Header()] = None,
+    x_codemate_product_user: Annotated[
+        str | None,
+        Header(alias="X-CodeMate-Product-User"),
+    ] = None,
+    x_codemate_product_provider: Annotated[
+        str | None,
+        Header(alias="X-CodeMate-Product-Provider"),
+    ] = None,
+    x_codemate_product_identity_timestamp: Annotated[
+        str | None,
+        Header(alias="X-CodeMate-Product-Identity-Timestamp"),
+    ] = None,
+    x_codemate_product_identity_nonce: Annotated[
+        str | None,
+        Header(alias="X-CodeMate-Product-Identity-Nonce"),
+    ] = None,
+    x_codemate_product_identity_signature: Annotated[
+        str | None,
+        Header(alias="X-CodeMate-Product-Identity-Signature"),
+    ] = None,
+) -> ProductPrincipal:
+    """Require a signed user identity when the product API is protected.
+
+    Local development intentionally remains a one-user tool.  A configured
+    token moves ownership to the signed browser/session identity, rather than
+    trusting a client-controlled user header.
+    """
+    expected_token = (settings.product_api_token or "").strip()
+    if not expected_token:
+        principal = ProductPrincipal(
+            owner_id="local:local-dev",
+            login="local-dev",
+            provider="local",
+            auth_method="local",
+        )
+        request.state.product_principal = principal
+        return principal
+
+    provided_token = bearer_token(authorization)
+    if not provided_token or not secrets.compare_digest(provided_token, expected_token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Product API token required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if not all(
+        (
+            x_codemate_product_user,
+            x_codemate_product_provider,
+            x_codemate_product_identity_timestamp,
+            x_codemate_product_identity_nonce,
+            x_codemate_product_identity_signature,
+        )
+    ):
+        raise product_identity_required()
+
+    login = header_identity_value(x_codemate_product_user, default="")
+    provider = header_identity_value(x_codemate_product_provider, default="")
+    if not login or not provider:
+        raise product_identity_required()
+    nonce = parse_identity_nonce(x_codemate_product_identity_nonce)
+    timestamp = parse_identity_timestamp(x_codemate_product_identity_timestamp)
+    now = int(time.time())
+    ttl_seconds = max(1, settings.codemate_product_identity_ttl_seconds)
+    if timestamp < now - ttl_seconds or timestamp > now + 60:
+        raise product_identity_required()
+
+    payload = product_identity_signature_payload(
+        method=request.method,
+        path_with_query=path_with_query(request),
+        timestamp=str(timestamp),
+        nonce=nonce,
+        login=login,
+        provider=provider,
+    )
+    if not valid_product_identity_signature(
+        payload,
+        x_codemate_product_identity_signature.strip(),
+        expected_token,
+    ):
+        raise product_identity_required()
+    try:
+        nonce_consumed = consume_proxy_identity_nonce(f"product:{nonce}", ttl_seconds)
+    except ReplayNonceStoreUnavailable as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Product identity nonce store unavailable",
+        ) from exc
+    if not nonce_consumed:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Product identity nonce already used",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    principal = ProductPrincipal(
+        owner_id=f"{provider.lower()}:{login.lower()}",
+        login=login,
+        provider=provider,
+        auth_method="token",
+    )
+    request.state.product_principal = principal
+    return principal
 
 
 def evaluation_service_tokens() -> list[EvaluationServiceToken]:
@@ -379,6 +502,41 @@ def sign_identity_payload_with_secret(payload: str, secret: str) -> str:
     return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
 
 
+def product_identity_signature_payload(
+    *,
+    method: str,
+    path_with_query: str,
+    timestamp: str,
+    nonce: str,
+    login: str,
+    provider: str,
+) -> str:
+    return "\n".join(
+        [
+            "v1",
+            timestamp,
+            nonce,
+            method.upper(),
+            path_with_query,
+            login,
+            provider,
+        ]
+    )
+
+
+def valid_product_identity_signature(payload: str, signature: str, expected_token: str) -> bool:
+    return any(
+        secrets.compare_digest(signature, sign_identity_payload_with_secret(payload, secret))
+        for secret in product_identity_verification_secrets(expected_token)
+    )
+
+
+def product_identity_verification_secrets(expected_token: str) -> list[str]:
+    current = (settings.codemate_product_identity_secret or "").strip() or expected_token
+    previous = (settings.codemate_product_identity_previous_secret or "").strip()
+    return [current, *([previous] if previous and previous != current else [])]
+
+
 def proxy_identity_verification_secrets(expected_token: str) -> list[str]:
     secrets_to_try = [proxy_identity_current_secret(expected_token)]
     previous_secret = (settings.codemate_proxy_identity_previous_secret or "").strip()
@@ -409,6 +567,14 @@ def signed_browser_identity_required() -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Signed evaluation identity required for browser requests",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+def product_identity_required() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Valid signed product identity required",
         headers={"WWW-Authenticate": "Bearer"},
     )
 

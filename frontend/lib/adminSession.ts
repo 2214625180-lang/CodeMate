@@ -63,6 +63,14 @@ export function backendEvaluationApiToken(): string {
   ).trim();
 }
 
+export function backendProductApiToken(): string {
+  return (
+    process.env.CODEMATE_PRODUCT_API_TOKEN ||
+    process.env.PRODUCT_API_TOKEN ||
+    ""
+  ).trim();
+}
+
 export function frontendAdminPassword(): string {
   return (
     process.env.FRONTEND_ADMIN_PASSWORD ||
@@ -95,7 +103,7 @@ export function rbacConfig(): RbacConfig {
 }
 
 export function adminSessionState(cookieValue: string | undefined): AdminSessionState {
-  const hasBackendToken = Boolean(backendEvaluationApiToken());
+  const hasBackendToken = Boolean(backendEvaluationApiToken() || backendProductApiToken());
   const hasPassword = Boolean(frontendAdminPassword());
   const hasGitHub = Boolean(githubOAuthConfig());
   const authRequired = hasBackendToken || hasPassword || hasGitHub;
@@ -129,7 +137,7 @@ export function adminSessionState(cookieValue: string | undefined): AdminSession
       authMode: "misconfigured",
       role: null,
       user: null,
-      detail: misconfigurationDetail(hasBackendToken, hasPassword, hasGitHub, hasRbacRules)
+    detail: misconfigurationDetail(hasBackendToken, hasPassword, hasGitHub, hasRbacRules)
     };
   }
 
@@ -331,7 +339,7 @@ function misconfigurationDetail(
   hasRbacRules: boolean
 ): string {
   if (hasBackendToken && !hasPassword && !hasGitHub) {
-    return "Configure GitHub OAuth or FRONTEND_ADMIN_PASSWORD when CODEMATE_EVALUATION_API_TOKEN is set.";
+    return "Configure GitHub OAuth or FRONTEND_ADMIN_PASSWORD when a CodeMate API token is set.";
   }
   if (hasGitHub && !hasRbacRules) {
     return "Configure at least one CODEMATE_RBAC_* rule before enabling GitHub OAuth.";

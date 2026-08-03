@@ -68,7 +68,25 @@ CODEMATE_PROXY_IDENTITY_SECRET=replace-with-a-32-character-minimum-secret
 
 The detailed evaluation-gate contract is in [CI Evaluation Gate](ci-evaluation-gate.md).
 
-## 3. Production extensions
+## 3. Product API ownership and repository import boundary
+
+CodeMate is a local, single-user development tool by default. In that mode all product resources belong to `local:local-dev`; it is suitable for a developer's own machine, not for exposing directly to other users.
+
+When `PRODUCT_API_TOKEN` is configured, the frontend proxy requires a signed authenticated browser session and forwards a short-lived, single-use product identity. The backend derives an `owner_id` from that signed provider/login pair and filters every `/repos` and `/runs` operation by it. Repository IDs and run IDs owned by another user return `404`, so they cannot become an enumeration oracle. This is intentionally lightweight user isolation, **not** MCP tenant authorization or a claim of multi-tenant SaaS support.
+
+For a protected deployment configure both the product token and a server-only signing secret:
+
+```env
+PRODUCT_API_TOKEN=replace-with-a-32-character-minimum-secret
+CODEMATE_PRODUCT_IDENTITY_SECRET=replace-with-a-different-32-character-secret
+FRONTEND_ADMIN_PASSWORD=choose-a-local-demo-password
+REPOSITORY_ALLOWED_HOSTS=github.com,gitlab.com
+REPOSITORY_ALLOW_HTTP=false
+```
+
+Repository imports reject URL userinfo, local/private/link-local DNS answers, untrusted hosts, submodules, interactive Git credentials, and oversized checkouts. Clone errors are deliberately generic; raw Git stderr is never persisted in repository status. The process re-resolves the host immediately before clone, but a resolver check alone cannot pin DNS for a native Git transport. A managed deployment must therefore enforce the same allowlist and public-address policy at its outbound proxy or isolated execution plane.
+
+## 4. Production extensions
 
 These controls are intentionally secondary to the repair-agent story. They exist to support a deeper systems discussion after the core loop is clear.
 
@@ -80,6 +98,6 @@ These controls are intentionally secondary to the repair-agent story. They exist
 | MCP operations, health monitoring, circuit breakers, and compliance | Make policy enforcement observable and fail closed | [MCP Operations](mcp-operations.md), [MCP production readiness](mcp-production-readiness.md) |
 | Managed Firecracker/Kubernetes execution plane | Separate local Docker convenience from production sandbox execution | [Managed sandbox execution plane](managed-sandbox-execution-plane.md) |
 
-## 4. Safety boundary
+## 5. Safety boundary
 
 The demo Compose overlay mounts a local Docker socket only into the worker so it can launch network-disabled test containers. This is a presentation convenience, not a production topology. Staging and production configuration require the remote sandbox broker/execution-plane controls described in [managed sandbox execution](managed-sandbox-execution-plane.md) and the qualification documents.

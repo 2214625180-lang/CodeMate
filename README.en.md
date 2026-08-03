@@ -78,9 +78,9 @@ This is deliberately constrained rather than a claim to repair every repository.
 | Focused TypeScript, JavaScript, Python, and a small Vue fixture set | Huge monorepos, multi-repository transactions, and arbitrary languages |
 | Local repairs with a failing test or executable reproduction command | Large refactors, automatic PR merge, and arbitrary feature implementation |
 | Reviewable diffs, explicit failure states, and regression checks | Calling a repair successful when tests did not run |
-| Local Docker sandbox and a production execution-plane integration | A completed industrial multi-tenant managed sandbox platform in this repo |
+| Local/single-user development, plus signed user isolation in protected deployments | A completed industrial multi-tenant managed sandbox platform in this repo |
 
-The main limitation is that real-model fix benchmarks have not been completed in this environment, so the corresponding metrics stay `not_run`. The demo requires the user's own valid model credential. The local demo mounts a Docker socket only into the worker to launch network-disabled test containers; it is not a production deployment topology.
+The main limitation is that real-model fix benchmarks have not been completed in this environment, so the corresponding metrics stay `not_run`. The demo requires the user's own valid model credential. The local demo mounts a Docker socket only into the worker to launch network-disabled test containers; it is not a production deployment topology. Protected repository import requires a signed user identity, an explicit Git-host allowlist, and a network egress policy; this repository does not present that boundary as a complete multi-tenant SaaS.
 
 ## Run and verify
 

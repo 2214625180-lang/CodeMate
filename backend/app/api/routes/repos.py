@@ -1,10 +1,12 @@
 from datetime import datetime, timezone
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from redis.exceptions import RedisError
 from sqlalchemy.orm import Session
 
+from app.api.auth import ProductPrincipal, get_product_principal
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.queue import enqueue_agent_run, enqueue_repository_index
@@ -24,21 +26,34 @@ from app.services.repo_service import RepoService
 from app.services.review_service import ReviewService
 
 router = APIRouter(prefix="/repos", tags=["repos"])
+ProductUser = Annotated[ProductPrincipal, Depends(get_product_principal)]
+
+
+def get_owned_repository(service: RepoService, repo_id: str, owner_id: str):
+    repository = service.get_for_owner(repo_id, owner_id)
+    if repository is None:
+        # A uniform response prevents repository-ID enumeration across users.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found")
+    return repository
 
 
 @router.post("", response_model=RepositoryRead, status_code=status.HTTP_201_CREATED)
-def create_repo(payload: RepositoryCreate, db: Session = Depends(get_db)):
+def create_repo(
+    payload: RepositoryCreate,
+    principal: ProductUser,
+    db: Session = Depends(get_db),
+):
     service = RepoService(db)
     try:
-        repository = service.create(payload.repo_url)
+        repository = service.create(payload.repo_url, owner_id=principal.owner_id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     try:
         enqueue_repository_index(repository.id, full=True)
-    except RedisError as exc:
+    except RedisError:
         repository.status = "failed"
-        repository.error_message = f"Failed to enqueue index job: {exc}"
+        repository.error_message = "Failed to enqueue repository indexing."
         db.add(repository)
         db.commit()
         db.refresh(repository)
@@ -47,12 +62,16 @@ def create_repo(payload: RepositoryCreate, db: Session = Depends(get_db)):
 
 
 @router.get("", response_model=list[RepositoryRead])
-def list_repos(db: Session = Depends(get_db)):
-    return RepoService(db).list()
+def list_repos(principal: ProductUser, db: Session = Depends(get_db)):
+    return RepoService(db).list_for_owner(principal.owner_id)
 
 
 @router.post("/chat")
-def chat_across_repos(payload: MultiRepoChatRequest, db: Session = Depends(get_db)):
+def chat_across_repos(
+    payload: MultiRepoChatRequest,
+    principal: ProductUser,
+    db: Session = Depends(get_db),
+):
     service = RepoService(db)
     if payload.repo_ids:
         if len(payload.repo_ids) > settings.multi_repo_max_repos:
@@ -60,7 +79,7 @@ def chat_across_repos(payload: MultiRepoChatRequest, db: Session = Depends(get_d
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"At most {settings.multi_repo_max_repos} repositories can be queried.",
             )
-        repositories = [service.get(repo_id) for repo_id in payload.repo_ids]
+        repositories = [service.get_for_owner(repo_id, principal.owner_id) for repo_id in payload.repo_ids]
         missing = [
             repo_id
             for repo_id, repository in zip(payload.repo_ids, repositories)
@@ -75,7 +94,7 @@ def chat_across_repos(payload: MultiRepoChatRequest, db: Session = Depends(get_d
     else:
         indexed_repositories = [
             repository
-            for repository in service.list()
+            for repository in service.list_for_owner(principal.owner_id)
             if repository.status == "indexed"
         ][: settings.multi_repo_max_repos]
 
@@ -107,29 +126,26 @@ def chat_across_repos(payload: MultiRepoChatRequest, db: Session = Depends(get_d
 
 
 @router.get("/{repo_id}", response_model=RepositoryRead)
-def get_repo(repo_id: str, db: Session = Depends(get_db)):
-    repository = RepoService(db).get(repo_id)
-    if repository is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found")
-    return repository
+def get_repo(repo_id: str, principal: ProductUser, db: Session = Depends(get_db)):
+    return get_owned_repository(RepoService(db), repo_id, principal.owner_id)
 
 
 @router.get("/{repo_id}/files", response_model=list[CodeFileRead])
-def list_repo_files(repo_id: str, db: Session = Depends(get_db)):
-    repository = RepoService(db).get(repo_id)
-    if repository is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found")
+def list_repo_files(repo_id: str, principal: ProductUser, db: Session = Depends(get_db)):
+    get_owned_repository(RepoService(db), repo_id, principal.owner_id)
     return FileService(db).list_files(repo_id)
 
 
 @router.get("/{repo_id}/files/content", response_model=FileContentRead)
 def get_repo_file_content(
     repo_id: str,
+    principal: ProductUser,
     path: str = Query(..., min_length=1),
     start_line: int | None = Query(default=None, ge=1),
     end_line: int | None = Query(default=None, ge=1),
     db: Session = Depends(get_db),
 ):
+    get_owned_repository(RepoService(db), repo_id, principal.owner_id)
     try:
         code_file, safe_start, safe_end, content = FileService(db).read_content(
             repo_id=repo_id,
@@ -152,18 +168,14 @@ def get_repo_file_content(
 
 
 @router.get("/{repo_id}/memory", response_model=RepoMemoryRead)
-def get_repo_memory(repo_id: str, db: Session = Depends(get_db)):
-    repository = RepoService(db).get(repo_id)
-    if repository is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found")
+def get_repo_memory(repo_id: str, principal: ProductUser, db: Session = Depends(get_db)):
+    get_owned_repository(RepoService(db), repo_id, principal.owner_id)
     return RepoMemoryService(db).read(repo_id)
 
 
 @router.post("/{repo_id}/memory/refresh", response_model=RepoMemoryRead)
-def refresh_repo_memory(repo_id: str, db: Session = Depends(get_db)):
-    repository = RepoService(db).get(repo_id)
-    if repository is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found")
+def refresh_repo_memory(repo_id: str, principal: ProductUser, db: Session = Depends(get_db)):
+    get_owned_repository(RepoService(db), repo_id, principal.owner_id)
     try:
         return RepoMemoryService(db).refresh(repo_id)
     except FileNotFoundError as exc:
@@ -171,10 +183,8 @@ def refresh_repo_memory(repo_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/{repo_id}/ci", response_model=CIConfigRead)
-def inspect_repo_ci(repo_id: str, db: Session = Depends(get_db)):
-    repository = RepoService(db).get(repo_id)
-    if repository is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found")
+def inspect_repo_ci(repo_id: str, principal: ProductUser, db: Session = Depends(get_db)):
+    get_owned_repository(RepoService(db), repo_id, principal.owner_id)
     try:
         return CIService(db).inspect(repo_id)
     except FileNotFoundError as exc:
@@ -182,10 +192,8 @@ def inspect_repo_ci(repo_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{repo_id}/ci/workflow", response_model=CIConfigRead)
-def write_repo_ci_workflow(repo_id: str, db: Session = Depends(get_db)):
-    repository = RepoService(db).get(repo_id)
-    if repository is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found")
+def write_repo_ci_workflow(repo_id: str, principal: ProductUser, db: Session = Depends(get_db)):
+    get_owned_repository(RepoService(db), repo_id, principal.owner_id)
     try:
         return CIService(db).write_workflow(repo_id)
     except FileNotFoundError as exc:
@@ -193,10 +201,13 @@ def write_repo_ci_workflow(repo_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{repo_id}/chat")
-def chat_with_repo(repo_id: str, payload: ChatRequest, db: Session = Depends(get_db)):
-    repository = RepoService(db).get(repo_id)
-    if repository is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found")
+def chat_with_repo(
+    repo_id: str,
+    payload: ChatRequest,
+    principal: ProductUser,
+    db: Session = Depends(get_db),
+):
+    get_owned_repository(RepoService(db), repo_id, principal.owner_id)
 
     return StreamingResponse(
         ChatService(db).stream_chat(repo_id=repo_id, question=payload.question),
@@ -209,10 +220,13 @@ def chat_with_repo(repo_id: str, payload: ChatRequest, db: Session = Depends(get
 
 
 @router.post("/{repo_id}/review", response_model=ReviewResponse)
-def review_repo_changes(repo_id: str, payload: ReviewRequest, db: Session = Depends(get_db)):
-    repository = RepoService(db).get(repo_id)
-    if repository is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found")
+def review_repo_changes(
+    repo_id: str,
+    payload: ReviewRequest,
+    principal: ProductUser,
+    db: Session = Depends(get_db),
+):
+    get_owned_repository(RepoService(db), repo_id, principal.owner_id)
 
     try:
         return ReviewService(db).review(repo_id=repo_id, request=payload)
@@ -225,10 +239,13 @@ def review_repo_changes(repo_id: str, payload: ReviewRequest, db: Session = Depe
 
 
 @router.post("/{repo_id}/fix", response_model=FixResponse, status_code=status.HTTP_202_ACCEPTED)
-def create_fix_run(repo_id: str, payload: FixRequest, db: Session = Depends(get_db)):
-    repository = RepoService(db).get(repo_id)
-    if repository is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found")
+def create_fix_run(
+    repo_id: str,
+    payload: FixRequest,
+    principal: ProductUser,
+    db: Session = Depends(get_db),
+):
+    repository = get_owned_repository(RepoService(db), repo_id, principal.owner_id)
     if repository.status != "indexed":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -238,6 +255,7 @@ def create_fix_run(repo_id: str, payload: FixRequest, db: Session = Depends(get_
     try:
         run = AgentService(db).create_fix_run(
             repo_id=repo_id,
+            owner_id=principal.owner_id,
             issue=payload.issue,
             test_command=payload.test_command,
             delegated_identity_id=payload.delegated_identity_id,
@@ -248,9 +266,9 @@ def create_fix_run(repo_id: str, payload: FixRequest, db: Session = Depends(get_
 
     try:
         enqueue_agent_run(run.id)
-    except RedisError as exc:
+    except RedisError:
         now = datetime.now(timezone.utc)
-        reason = f"Failed to enqueue agent run: {exc}"
+        reason = "Failed to enqueue agent run."
         run.status = "infra_error"
         run.failure_reason = reason
         run.final_summary = reason
@@ -266,12 +284,11 @@ def create_fix_run(repo_id: str, payload: FixRequest, db: Session = Depends(get_
 @router.post("/{repo_id}/reindex", response_model=RepositoryRead)
 def reindex_repo(
     repo_id: str,
+    principal: ProductUser,
     full: bool = Query(default=False),
     db: Session = Depends(get_db),
 ):
-    repository = RepoService(db).get(repo_id)
-    if repository is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found")
+    repository = get_owned_repository(RepoService(db), repo_id, principal.owner_id)
 
     repository.status = "pending"
     repository.error_message = None
@@ -281,9 +298,9 @@ def reindex_repo(
 
     try:
         enqueue_repository_index(repository.id, full=full)
-    except RedisError as exc:
+    except RedisError:
         repository.status = "failed"
-        repository.error_message = f"Failed to enqueue reindex job: {exc}"
+        repository.error_message = "Failed to enqueue repository indexing."
         db.add(repository)
         db.commit()
         db.refresh(repository)
@@ -292,10 +309,8 @@ def reindex_repo(
 
 
 @router.get("/{repo_id}/status", response_model=RepositoryStatusRead)
-def get_repo_status(repo_id: str, db: Session = Depends(get_db)):
-    repository = RepoService(db).get(repo_id)
-    if repository is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found")
+def get_repo_status(repo_id: str, principal: ProductUser, db: Session = Depends(get_db)):
+    repository = get_owned_repository(RepoService(db), repo_id, principal.owner_id)
     return RepositoryStatusRead(
         id=repository.id,
         status=repository.status,

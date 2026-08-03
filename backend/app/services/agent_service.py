@@ -54,12 +54,15 @@ class AgentService:
         self,
         *,
         repo_id: str,
+        owner_id: str,
         issue: str,
         test_command: str | None,
         delegated_identity_id: str | None = None,
         delegation_token: str | None = None,
     ) -> AgentRun:
         repository = self.db.get(Repository, repo_id)
+        if repository is None or repository.owner_id != owner_id:
+            raise ValueError("Repository not found")
         tenant_id = repository.tenant_id if repository else None
         principal_type = "agent"
         principal_id = "codemate-agent"
@@ -80,6 +83,7 @@ class AgentService:
             principal_id = identity.subject
         run = AgentRun(
             repo_id=repo_id,
+            owner_id=owner_id,
             tenant_id=tenant_id,
             principal_type=principal_type,
             principal_id=principal_id,

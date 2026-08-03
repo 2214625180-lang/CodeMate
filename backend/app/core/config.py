@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     rq_worker_heartbeat_ttl_seconds: int = 20
     rq_worker_heartbeat_prefix: str = "codemate:rq:worker:heartbeat"
     clone_timeout_seconds: int = 120
+    repository_max_clone_bytes: int = 128 * 1024 * 1024
+    repository_max_clone_files: int = 20_000
+    repository_allowed_hosts: str = ""
+    repository_allow_http: bool = False
     max_file_size_bytes: int = 500 * 1024
     embedding_provider: str = "mock"
     embedding_model: str = "text-embedding-3-small"
@@ -213,6 +217,10 @@ class Settings(BaseSettings):
     evaluation_admin_token: str | None = None
     evaluation_ci_token: str | None = None
     evaluation_read_token: str | None = None
+    product_api_token: str | None = None
+    codemate_product_identity_secret: str | None = None
+    codemate_product_identity_previous_secret: str | None = None
+    codemate_product_identity_ttl_seconds: int = 300
     codemate_proxy_identity_secret: str | None = None
     codemate_proxy_identity_previous_secret: str | None = None
     codemate_proxy_identity_ttl_seconds: int = 300
@@ -269,6 +277,14 @@ class Settings(BaseSettings):
         return {
             host.strip().lower()
             for host in self.mcp_registry_allowed_hosts.split(",")
+            if host.strip()
+        }
+
+    @property
+    def repository_host_allowlist(self) -> set[str]:
+        return {
+            host.strip().lower()
+            for host in self.repository_allowed_hosts.split(",")
             if host.strip()
         }
 
@@ -352,6 +368,10 @@ class Settings(BaseSettings):
             )
         if secure_env and contains_secret_placeholder(self.database_url):
             raise RuntimeError("DATABASE_URL contains a placeholder credential.")
+        if self.repository_max_clone_bytes < 1:
+            raise RuntimeError("REPOSITORY_MAX_CLONE_BYTES must be a positive integer.")
+        if self.repository_max_clone_files < 1:
+            raise RuntimeError("REPOSITORY_MAX_CLONE_FILES must be a positive integer.")
         if secure_env and (self.aws_endpoint_url or "").strip():
             raise RuntimeError(
                 "AWS_ENDPOINT_URL must be empty in staging and production; emulators cannot qualify a release."
@@ -525,6 +545,20 @@ class Settings(BaseSettings):
                     )
             if self.sandbox_execution_plane_enabled:
                 self._validate_execution_plane_config()
+            if insecure_secret(self.product_api_token):
+                raise RuntimeError(
+                    "PRODUCT_API_TOKEN must contain a non-placeholder secret of at least 32 characters "
+                    "in staging and production."
+                )
+            if not self.repository_host_allowlist:
+                raise RuntimeError(
+                    "REPOSITORY_ALLOWED_HOSTS must explicitly list trusted Git hosts "
+                    "in staging and production."
+                )
+            if self.repository_allow_http:
+                raise RuntimeError(
+                    "REPOSITORY_ALLOW_HTTP must be false in staging and production."
+                )
 
     def _validate_execution_plane_config(self) -> None:
         if not (self.sandbox_execution_plane_url or "").startswith("https://"):
