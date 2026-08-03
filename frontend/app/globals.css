@@ -11,6 +11,19 @@ body {
   color: #111827;
 }
 
+.portfolio-grid {
+  background-image:
+    linear-gradient(to right, rgb(226 232 240 / 0.55) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(226 232 240 / 0.55) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.portfolio-replay-glow {
+  background:
+    radial-gradient(circle at 85% 12%, rgb(34 211 238 / 0.15), transparent 34%),
+    radial-gradient(circle at 10% 100%, rgb(139 92 246 / 0.12), transparent 36%);
+}
+
 a {
   color: inherit;
   text-decoration: none;

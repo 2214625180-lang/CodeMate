@@ -3,8 +3,9 @@ import Link from "next/link";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "CodeMate",
-  description: "Code repository Q&A and repair agent"
+  title: "CodeMate | Verifiable Code Repair Agent",
+  description:
+    "A verifiable code repair agent for focused TypeScript and Python repositories."
 };
 
 export default function RootLayout({
@@ -23,31 +24,13 @@ export default function RootLayout({
               </Link>
               <nav className="flex items-center gap-4 text-sm text-slate-600">
                 <Link href="/repos" className="hover:text-slate-950">
-                  Repositories
-                </Link>
-                <Link href="/repos/chat" className="hover:text-slate-950">
-                  Multi-repo Q&A
+                  Fix Agent
                 </Link>
                 <Link href="/evaluations" className="hover:text-slate-950">
-                  Evaluations
-                </Link>
-                <Link href="/evaluations/compare" className="hover:text-slate-950">
-                  Regression
-                </Link>
-                <Link href="/evaluations/datasets" className="hover:text-slate-950">
-                  Benchmarks
+                  Evaluation
                 </Link>
                 <Link href="/mcp-operations" className="hover:text-slate-950">
-                  MCP Ops
-                </Link>
-                <Link href="/mcp-registry" className="hover:text-slate-950">
-                  MCP Registry
-                </Link>
-                <Link href="/mcp-tenancy" className="hover:text-slate-950">
-                  MCP Tenancy
-                </Link>
-                <Link href="/mcp-quotas" className="hover:text-slate-950">
-                  MCP Quotas
+                  Extensions
                 </Link>
               </nav>
             </div>
