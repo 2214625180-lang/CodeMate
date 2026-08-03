@@ -153,13 +153,16 @@ export function createFixRun(
   testCommand?: string,
   delegatedIdentity?: { identityId: string; delegationToken: string }
 ): Promise<FixResponse> {
+  const delegatedIdentityId = delegatedIdentity?.identityId.trim() || null;
+  const delegationToken = delegatedIdentity?.delegationToken.trim() || null;
+  const canDelegate = delegatedIdentityId !== null && delegationToken !== null;
   return request<FixResponse>(`/repos/${repoId}/fix`, {
     method: "POST",
     body: JSON.stringify({
       issue,
       test_command: testCommand?.trim() || null,
-      delegated_identity_id: delegatedIdentity?.identityId.trim() || null,
-      delegation_token: delegatedIdentity?.delegationToken.trim() || null
+      delegated_identity_id: canDelegate ? delegatedIdentityId : null,
+      delegation_token: canDelegate ? delegationToken : null
     })
   });
 }
