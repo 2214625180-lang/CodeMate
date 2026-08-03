@@ -2,6 +2,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from sqlalchemy import create_engine
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import sessionmaker
 
 from app.core.config import settings
@@ -10,7 +11,7 @@ from app.indexing.chunkers import get_chunker
 from app.models.code_chunk import CodeChunk
 from app.models.code_file import CodeFile
 from app.models.repository import Repository
-from app.services.retrieval_service import RetrievalService
+from app.services.retrieval_service import RetrievalResult, RetrievalService
 
 
 def test_ast_chunkers_preserve_python_typescript_and_vue_symbol_boundaries() -> None:
@@ -165,3 +166,40 @@ def test_hybrid_retrieval_reranks_exact_symbols_and_expands_same_file_context(mo
     assert results[1].source == "hybrid+rerank+expanded"
     assert service.rewrite_query("订单 checkout.ts TimeoutError").file_paths == ["checkout.ts"]
     assert "order" in service.rewrite_query("订单 checkout.ts TimeoutError").keywords
+
+
+def test_postgresql_fts_orders_rank_before_limiting_candidates() -> None:
+    statement = RetrievalService._postgres_fts_statement(
+        repo_ids=["repo-fts"],
+        search_terms=["calculate_total", "TaxCalculationError"],
+        limit=16,
+    )
+    sql = str(
+        statement.compile(
+            dialect=postgresql.dialect(),
+            compile_kwargs={"literal_binds": True},
+        )
+    )
+
+    assert "plainto_tsquery" in sql
+    assert "ts_rank_cd" in sql
+    assert "ORDER BY keyword_score DESC, code_chunks.id ASC" in sql
+    assert sql.index("ORDER BY") < sql.index("LIMIT 16")
+
+
+def test_rrf_prioritizes_chunks_returned_by_keyword_and_vector_searches() -> None:
+    def result(chunk_id: str, source: str) -> RetrievalResult:
+        return RetrievalResult(
+            chunk=SimpleNamespace(id=chunk_id),  # type: ignore[arg-type]
+            score=1.0,
+            source=source,
+        )
+
+    service = RetrievalService.__new__(RetrievalService)
+    fused = service._reciprocal_rank_fusion(
+        keyword_results=[result("keyword-only", "keyword"), result("shared", "keyword")],
+        vector_results=[result("vector-only", "vector"), result("shared", "vector")],
+    )
+
+    assert [item.chunk.id for item in fused] == ["shared", "keyword-only", "vector-only"]
+    assert fused[0].source == "hybrid"

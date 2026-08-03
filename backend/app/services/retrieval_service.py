@@ -2,7 +2,7 @@ import re
 from dataclasses import dataclass
 from typing import Iterable
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import Text, and_, func, literal, literal_column, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -28,6 +28,7 @@ class RetrievalResult:
 
 
 class RetrievalService:
+    RRF_K = 60
     CHINESE_HINTS = {
         "登录": ["login", "auth", "signin", "sign_in", "authenticate", "session", "token"],
         "认证": ["auth", "authenticate", "authorization", "token", "session"],
@@ -93,29 +94,37 @@ class RetrievalService:
                 "RETRIEVAL_STRATEGY must be either 'vector' or 'hybrid'"
             )
 
-        merged: dict[str, RetrievalResult] = {}
+        keyword_results: list[RetrievalResult] = []
         if strategy == "hybrid":
-            for result in self._keyword_search(
+            keyword_results = self._keyword_search(
                 scoped_repo_ids,
                 terms,
                 limit=candidate_limit * 2,
-            ):
-                merged[result.chunk.id] = result
+            )
 
-        for result in self._vector_search(scoped_repo_ids, query, terms, limit=candidate_limit):
-            existing = merged.get(result.chunk.id)
-            if existing is None:
-                if result.score >= settings.retrieval_min_vector_score:
-                    merged[result.chunk.id] = result
-                continue
-            existing.score += result.score
-            existing.source = "hybrid"
+        vector_results = [
+            result
+            for result in self._vector_search(
+                scoped_repo_ids,
+                query,
+                terms,
+                limit=candidate_limit,
+            )
+            if result.score >= settings.retrieval_min_vector_score
+        ]
 
-        candidates = list(merged.values())
+        candidates = (
+            self._reciprocal_rank_fusion(
+                keyword_results=keyword_results,
+                vector_results=vector_results,
+            )
+            if strategy == "hybrid"
+            else vector_results
+        )
         if settings.retrieval_rerank_enabled:
             ranked = self._rerank(candidates, query=query, terms=terms)
         else:
-            ranked = sorted(candidates, key=lambda item: item.score, reverse=True)
+            ranked = sorted(candidates, key=lambda item: (-item.score, item.chunk.id))
 
         results = ranked[:limit]
         if settings.retrieval_context_expansion_enabled:
@@ -163,6 +172,9 @@ class RetrievalService:
         if not search_terms:
             return []
 
+        if self.db.get_bind().dialect.name == "postgresql":
+            return self._postgres_fts_search(repo_ids, search_terms, limit=limit)
+
         conditions = []
         for term in search_terms:
             pattern = f"%{term}%"
@@ -178,11 +190,12 @@ class RetrievalService:
             select(CodeChunk)
             .where(CodeChunk.repo_id.in_(repo_ids))
             .where(or_(*conditions))
+            .order_by(CodeChunk.file_path.asc(), CodeChunk.start_line.asc(), CodeChunk.id.asc())
             .limit(limit)
         )
         chunks = list(self.db.execute(statement).scalars().all())
 
-        return [
+        results = [
             RetrievalResult(
                 chunk=chunk,
                 score=self._keyword_score(chunk, search_terms),
@@ -190,6 +203,57 @@ class RetrievalService:
             )
             for chunk in chunks
         ]
+        return sorted(results, key=lambda item: (-item.score, item.chunk.id))
+
+    def _postgres_fts_search(
+        self,
+        repo_ids: list[str],
+        search_terms: list[str],
+        *,
+        limit: int,
+    ) -> list[RetrievalResult]:
+        statement = self._postgres_fts_statement(
+            repo_ids=repo_ids,
+            search_terms=search_terms,
+            limit=limit,
+        )
+        rows = self.db.execute(statement).all()
+        return [
+            RetrievalResult(chunk=chunk, score=float(score), source="keyword")
+            for chunk, score in rows
+        ]
+
+    @staticmethod
+    def _postgres_fts_statement(
+        *,
+        repo_ids: list[str],
+        search_terms: list[str],
+        limit: int,
+    ):
+        config = literal_column("'simple'")
+        empty_text = literal("", type_=Text())
+
+        def weighted_vector(column, weight: str):
+            return func.setweight(
+                func.to_tsvector(config, func.coalesce(column, empty_text)),
+                literal_column(f"'{weight}'"),
+            )
+
+        document = weighted_vector(CodeChunk.symbol_name, "A")
+        document = document.op("||")(weighted_vector(CodeChunk.file_path, "B"))
+        document = document.op("||")(weighted_vector(CodeChunk.summary, "C"))
+        document = document.op("||")(weighted_vector(CodeChunk.content, "D"))
+        tsquery = func.plainto_tsquery(config, search_terms[0])
+        for term in search_terms[1:]:
+            tsquery = tsquery.op("||")(func.plainto_tsquery(config, term))
+        rank = func.ts_rank_cd(document, tsquery, 32).label("keyword_score")
+        return (
+            select(CodeChunk, rank)
+            .where(CodeChunk.repo_id.in_(repo_ids))
+            .where(document.op("@@")(tsquery))
+            .order_by(rank.desc(), CodeChunk.id.asc())
+            .limit(limit)
+        )
 
     def _vector_search(
         self,
@@ -224,21 +288,55 @@ class RetrievalService:
             payload = point.payload or {}
             chunk_id = payload.get("chunk_id")
             if isinstance(chunk_id, str):
-                scored_ids[chunk_id] = float(point.score)
+                scored_ids[chunk_id] = max(scored_ids.get(chunk_id, float("-inf")), float(point.score))
 
         if not scored_ids:
             return []
 
-        chunks = self.db.execute(
-            select(CodeChunk)
-            .where(CodeChunk.repo_id.in_(repo_ids))
-            .where(CodeChunk.id.in_(scored_ids))
-        ).scalars()
+        chunks_by_id = {
+            chunk.id: chunk
+            for chunk in self.db.execute(
+                select(CodeChunk)
+                .where(CodeChunk.repo_id.in_(repo_ids))
+                .where(CodeChunk.id.in_(scored_ids))
+            )
+            .scalars()
+        }
 
         return [
-            RetrievalResult(chunk=chunk, score=scored_ids[chunk.id], source="vector")
-            for chunk in chunks
+            RetrievalResult(chunk=chunks_by_id[chunk_id], score=score, source="vector")
+            for chunk_id, score in sorted(
+                scored_ids.items(), key=lambda item: (-item[1], item[0])
+            )
+            if chunk_id in chunks_by_id
         ]
+
+    def _reciprocal_rank_fusion(
+        self,
+        *,
+        keyword_results: list[RetrievalResult],
+        vector_results: list[RetrievalResult],
+    ) -> list[RetrievalResult]:
+        fused: dict[str, RetrievalResult] = {}
+        source_signals: dict[str, set[str]] = {}
+        for source, results in (("keyword", keyword_results), ("vector", vector_results)):
+            seen_ids: set[str] = set()
+            for rank, result in enumerate(results, start=1):
+                chunk_id = result.chunk.id
+                if chunk_id in seen_ids:
+                    continue
+                seen_ids.add(chunk_id)
+                existing = fused.get(chunk_id)
+                if existing is None:
+                    existing = RetrievalResult(chunk=result.chunk, score=0.0, source=source)
+                    fused[chunk_id] = existing
+                existing.score += 1.0 / (self.RRF_K + rank)
+                source_signals.setdefault(chunk_id, set()).add(source)
+
+        for chunk_id, result in fused.items():
+            if len(source_signals[chunk_id]) > 1:
+                result.source = "hybrid"
+        return sorted(fused.values(), key=lambda item: (-item.score, item.chunk.id))
 
     def _rerank(
         self,
@@ -265,7 +363,7 @@ class RetrievalService:
             if "rerank" not in result.source:
                 result.source = f"{result.source}+rerank"
 
-        return sorted(results, key=lambda item: item.score, reverse=True)
+        return sorted(results, key=lambda item: (-item.score, item.chunk.id))
 
     def _rerank_score(
         self,
