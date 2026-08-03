@@ -3,7 +3,7 @@ import shutil
 import subprocess
 from collections import Counter
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy import delete, select
@@ -98,7 +98,7 @@ class IndexService:
                 file_count=len(scanned_files),
                 chunk_count=chunk_count,
                 language_summary=dict(language_summary),
-                indexed_at=datetime.utcnow(),
+                indexed_at=datetime.now(timezone.utc),
             )
             self.db.commit()
         except Exception:
@@ -170,7 +170,7 @@ class IndexService:
                 file_count=len(scanned_files),
                 chunk_count=self._current_chunk_count(repository.id),
                 language_summary=dict(language_summary),
-                indexed_at=datetime.utcnow(),
+                indexed_at=datetime.now(timezone.utc),
             )
             self.db.commit()
         except Exception:
@@ -459,7 +459,7 @@ class IndexService:
     def _set_repository_values(self, repository: Repository, **values) -> None:
         for key, value in values.items():
             setattr(repository, key, value)
-        repository.updated_at = datetime.utcnow()
+        repository.updated_at = datetime.now(timezone.utc)
         self.db.add(repository)
 
     def _update_repository(self, repository: Repository, **values) -> None:
