@@ -7,6 +7,7 @@ from app.models.evaluation import Evaluation
 from app.models.evaluation_dataset import EvaluationDataset
 from app.models.evaluation_dataset_snapshot import EvaluationDatasetSnapshot
 from app.models.evaluation_run import EvaluationRun
+from app.models.github_app_repair import GitHubAppRepair
 from app.models.mcp_tool_approval import MCPToolApproval
 from app.models.mcp_tool_execution import MCPToolExecution
 from app.models.mcp_tenant import MCPTenant
@@ -44,6 +45,7 @@ __all__ = [
     "EvaluationDataset",
     "EvaluationDatasetSnapshot",
     "EvaluationRun",
+    "GitHubAppRepair",
     "MCPToolApproval",
     "MCPToolExecution",
     "MCPServerHealth",

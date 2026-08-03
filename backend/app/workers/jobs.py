@@ -31,6 +31,9 @@ def run_agent_job(run_id: str) -> None:
     db = SessionLocal()
     try:
         AgentService(db).run_fix(run_id)
+        from app.services.github_app_repair_service import GitHubAppRepairService
+
+        GitHubAppRepairService(db).sync_agent_result(run_id)
     finally:
         db.close()
 
