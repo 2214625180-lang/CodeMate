@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, JSON, String
+from sqlalchemy import Integer, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.time import UTCDateTime, utc_now
 from app.core.database import Base
 
 
@@ -23,8 +24,8 @@ class EvaluationRun(Base):
     metrics_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     config_snapshot: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     request_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=utc_now)
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
 
     results = relationship(
         "Evaluation",

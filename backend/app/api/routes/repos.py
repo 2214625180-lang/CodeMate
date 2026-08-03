@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -249,7 +249,7 @@ def create_fix_run(repo_id: str, payload: FixRequest, db: Session = Depends(get_
     try:
         enqueue_agent_run(run.id)
     except RedisError as exc:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         reason = f"Failed to enqueue agent run: {exc}"
         run.status = "infra_error"
         run.failure_reason = reason

@@ -4,7 +4,7 @@ import math
 import secrets
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from redis import Redis
@@ -245,7 +245,7 @@ class MCPQuotaService:
         policy.scope_key = policy_scope_key(normalized)
         policy.updated_by = actor
         policy.version += 1
-        policy.updated_at = datetime.utcnow()
+        policy.updated_at = datetime.now(timezone.utc)
         self.db.add(policy)
         try:
             self.db.commit()
@@ -260,7 +260,7 @@ class MCPQuotaService:
         policy.enabled = False
         policy.updated_by = actor
         policy.version += 1
-        policy.updated_at = datetime.utcnow()
+        policy.updated_at = datetime.now(timezone.utc)
         self.db.add(policy)
         self.db.commit()
         self.db.refresh(policy)
@@ -276,7 +276,7 @@ class MCPQuotaService:
         policy = self._locked_policy(policy_id)
         if policy.version != expected_version:
             raise MCPQuotaConflictError("Quota policy version conflict")
-        policy.reset_at = datetime.utcnow()
+        policy.reset_at = datetime.now(timezone.utc)
         policy.updated_by = actor
         policy.version += 1
         policy.updated_at = policy.reset_at
@@ -309,12 +309,12 @@ class MCPQuotaService:
         if policy.version != expected_version:
             raise MCPQuotaConflictError("Quota policy version conflict")
         policy.temporary_override_json = overrides
-        policy.temporary_override_expires_at = datetime.utcnow() + timedelta(
+        policy.temporary_override_expires_at = datetime.now(timezone.utc) + timedelta(
             seconds=max(60, min(duration_seconds, 7 * 24 * 60 * 60))
         )
         policy.updated_by = actor
         policy.version += 1
-        policy.updated_at = datetime.utcnow()
+        policy.updated_at = datetime.now(timezone.utc)
         self.db.add(policy)
         self.db.commit()
         self.db.refresh(policy)
@@ -353,7 +353,7 @@ class MCPQuotaService:
             return MCPQuotaReservation(None, None, (), enabled=False)
         if not context.tenant_id:
             raise MCPQuotaUnavailableError("MCP quota context has no tenant")
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         policies = self._matching_policies(context, server_name, tool_name, lock=True)
         if not policies:
             return MCPQuotaReservation(None, None, (), enabled=False)
@@ -481,14 +481,14 @@ class MCPQuotaService:
             event.status = outcome[:32]
             event.lease_token = None
             event.lease_expires_at = None
-            event.released_at = datetime.utcnow()
+            event.released_at = datetime.now(timezone.utc)
             event.updated_at = event.released_at
             self.db.add(event)
             self.db.commit()
         self._redis_release(reservation.policy_ids, reservation.event_id)
 
     def overview(self, tenant_id: str, *, window_days: int = 1) -> dict[str, Any]:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         cutoff = now - timedelta(days=max(1, min(window_days, 90)))
         events = list(
             self.db.scalars(
@@ -610,7 +610,7 @@ class MCPQuotaService:
             if not self.redis.set(lock_key, lock_token, nx=True, ex=60):
                 raise MCPQuotaConflictError("Quota reconciliation is already running")
             time.sleep(0.1)
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             policies = self.list_policies(tenant_id)
             drift: dict[str, Any] = {}
             rebuilt = 0
@@ -663,13 +663,13 @@ class MCPQuotaService:
         dry_run: bool = True,
     ) -> dict[str, Any]:
         days = max(30, retention_days or settings.mcp_quota_retention_days)
-        cutoff = datetime.utcnow() - timedelta(days=days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         event_ids = select(MCPQuotaEvent.id).where(
             MCPQuotaEvent.tenant_id == tenant_id,
             MCPQuotaEvent.created_at < cutoff,
             or_(
                 MCPQuotaEvent.lease_expires_at.is_(None),
-                MCPQuotaEvent.lease_expires_at < datetime.utcnow(),
+                MCPQuotaEvent.lease_expires_at < datetime.now(timezone.utc),
             ),
         )
         event_count = int(

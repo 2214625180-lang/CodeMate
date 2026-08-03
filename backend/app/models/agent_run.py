@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.time import UTCDateTime, utc_now
 from app.core.database import Base
 
 
@@ -33,12 +34,12 @@ class AgentRun(Base):
     iterations: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     feedback_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     feedback_note: Mapped[str | None] = mapped_column(Text, nullable=True)
-    feedback_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    feedback_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+        UTCDateTime, nullable=False, default=utc_now, onupdate=utc_now
     )
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
 
     repository = relationship("Repository")
     steps = relationship(

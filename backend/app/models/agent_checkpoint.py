@@ -1,13 +1,15 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, LargeBinary, String, Text
+from sqlalchemy import ForeignKey, Index, Integer, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.time import UTCDateTime, utc_now
 from app.core.database import Base
 
 
 class AgentCheckpoint(Base):
     __tablename__ = "agent_checkpoints"
+    __table_args__ = (Index("ix_agent_checkpoints_thread_created", "thread_id", "created_at"),)
 
     thread_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("agent_runs.id", ondelete="CASCADE"), primary_key=True
@@ -19,7 +21,7 @@ class AgentCheckpoint(Base):
     checkpoint_blob: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     metadata_type: Mapped[str] = mapped_column(String(64), nullable=False)
     metadata_blob: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=utc_now)
 
 
 class AgentCheckpointBlob(Base):

@@ -1,5 +1,5 @@
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timezone
 import hashlib
 import inspect
 import json
@@ -287,7 +287,7 @@ class EvaluationService:
             return
         run.status = "failed"
         run.metrics_json = {"error": reason}
-        run.finished_at = datetime.utcnow()
+        run.finished_at = datetime.now(timezone.utc)
         self.db.add(run)
         self.db.commit()
 
@@ -319,7 +319,7 @@ class EvaluationService:
         run.passed_count = passed_count
         run.failed_count = failed_count
         run.metrics_json = self._retrieval_metrics(results, top_k=request.top_k)
-        run.finished_at = datetime.utcnow()
+        run.finished_at = datetime.now(timezone.utc)
         self.db.add(run)
         self.db.commit()
         return self.get_run(run.id)
@@ -354,7 +354,7 @@ class EvaluationService:
         run.passed_count = passed_count
         run.failed_count = failed_count
         run.metrics_json = self._fix_metrics(results)
-        run.finished_at = datetime.utcnow()
+        run.finished_at = datetime.now(timezone.utc)
         self.db.add(run)
         self.db.commit()
         return self.get_run(run.id)

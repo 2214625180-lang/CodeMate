@@ -107,7 +107,7 @@ class AgentService:
 
         try:
             run.status = "running"
-            run.updated_at = datetime.utcnow()
+            run.updated_at = datetime.now(timezone.utc)
             self.db.add(run)
             self.db.commit()
 
@@ -146,7 +146,7 @@ class AgentService:
             run.status = "running"
             run.final_summary = None
             run.failure_reason = None
-            run.updated_at = datetime.utcnow()
+            run.updated_at = datetime.now(timezone.utc)
             self.db.add(run)
             self.db.commit()
 
@@ -209,7 +209,7 @@ class AgentService:
             run.status = "running"
             run.final_summary = None
             run.failure_reason = None
-            run.updated_at = datetime.utcnow()
+            run.updated_at = datetime.now(timezone.utc)
             self.db.add(run)
             self.db.commit()
             final_state = self._invoke_fix_graph(run, state)
@@ -246,7 +246,7 @@ class AgentService:
                 },
                 False,
             )
-        if datetime.utcnow() >= approval.expires_at:
+        if datetime.now(timezone.utc) >= approval.expires_at:
             return (
                 {
                     "ok": False,
@@ -1343,8 +1343,8 @@ class AgentService:
         run.test_result = verification_result
         run.iterations = state.get("iterations", 0)
         run.failure_reason = None if run.status == VERIFIED_SUCCESS else run.final_summary
-        run.finished_at = datetime.utcnow()
-        run.updated_at = datetime.utcnow()
+        run.finished_at = datetime.now(timezone.utc)
+        run.updated_at = datetime.now(timezone.utc)
         self.db.add(run)
         self.db.add(
             AgentStep(
@@ -1362,7 +1362,7 @@ class AgentService:
         self.db.commit()
 
     def _finish_infra_error(self, run: AgentRun, reason: str) -> None:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         run.status = INFRA_ERROR
         run.failure_reason = reason
         run.final_summary = reason

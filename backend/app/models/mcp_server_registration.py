@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, JSON, String, Text
+from sqlalchemy import Boolean, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.time import UTCDateTime, utc_now
 from app.core.database import Base
 
 
@@ -26,13 +27,13 @@ class MCPServerRegistration(Base):
     server_info_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     capabilities_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     tools_snapshot_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
-    validated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    validated_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
     updated_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+        UTCDateTime, nullable=False, default=utc_now, onupdate=utc_now
     )
 
     credential = relationship(

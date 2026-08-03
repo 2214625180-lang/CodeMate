@@ -3,7 +3,7 @@ import math
 import os
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from time import perf_counter
 from typing import Any, Callable
 
@@ -154,7 +154,7 @@ class MCPExecutionService:
         if claim.cached:
             execution.deduplication_hits += 1
             execution.version += 1
-            execution.updated_at = datetime.utcnow()
+            execution.updated_at = datetime.now(timezone.utc)
             self.db.add(execution)
             self.db.commit()
             self.db.refresh(execution)
@@ -292,7 +292,7 @@ class MCPExecutionService:
 
     def claim(self, execution_id: str) -> MCPExecutionClaim:
         execution = self._locked(execution_id)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if execution.status in TERMINAL_EXECUTION_STATUSES:
             return MCPExecutionClaim(execution=execution, lease_token=None, cached=True)
         if execution.status in {"unknown", "reconciling"}:
@@ -345,7 +345,7 @@ class MCPExecutionService:
             return execution
         if execution.status != "executing" or execution.lease_token != lease_token:
             raise MCPExecutionConflictError("MCP execution lease is no longer valid")
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         execution.status = "failed" if failed else "succeeded"
         execution.result_json = jsonable(result)
         execution.error_message = (
@@ -385,7 +385,7 @@ class MCPExecutionService:
         execution = self._locked(execution_id)
         if execution.status != "executing":
             return None
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if execution.lease_expires_at and now < execution.lease_expires_at:
             return None
         execution = self._recover_expired_locked(execution, now)
@@ -415,7 +415,7 @@ class MCPExecutionService:
             raise MCPExecutionConflictError(
                 f"MCP execution cannot be reconciled from status '{execution.status}'"
             )
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if action == "retry":
             if not execution.retry_safe:
                 raise MCPExecutionConflictError(
@@ -472,7 +472,7 @@ class MCPExecutionService:
         return execution
 
     def mark_run_waiting_reconciliation(self, execution: MCPToolExecution) -> None:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         run = self.db.get(AgentRun, execution.run_id)
         if run is not None and run.status not in TERMINAL_AGENT_RUN_STATUSES:
             run.status = "waiting_reconciliation"
@@ -506,7 +506,7 @@ class MCPExecutionService:
             approval.execution_started_at = None
             approval.execution_finished_at = None
             approval.version += 1
-            approval.updated_at = datetime.utcnow()
+            approval.updated_at = datetime.now(timezone.utc)
             self.db.add(approval)
             self.db.commit()
             self.db.refresh(approval)
@@ -598,7 +598,7 @@ class MCPExecutionService:
         *,
         increment_version: bool = True,
     ) -> None:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         execution.status = "unknown"
         execution.error_message = reason[:4000]
         execution.lease_token = None

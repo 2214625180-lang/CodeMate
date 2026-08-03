@@ -3,7 +3,7 @@ import hashlib
 import secrets
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlencode, urlsplit
 
@@ -103,7 +103,7 @@ class MCPTenancyService:
         )
         if binding is None:
             return False
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         grants = list(
             self.db.execute(
                 select(MCPAccessGrant).where(
@@ -268,7 +268,7 @@ class MCPDelegatedIdentityService:
                 encrypted_verifier=encrypt_payload(
                     {"verifier": verifier}, binding=oauth_state_binding(sha256(state))
                 ),
-                expires_at=datetime.utcnow()
+                expires_at=datetime.now(timezone.utc)
                 + timedelta(seconds=max(60, settings.mcp_delegated_oauth_state_ttl_seconds)),
             )
         )
@@ -293,7 +293,7 @@ class MCPDelegatedIdentityService:
             .where(MCPDelegatedOAuthState.state_hash == sha256(state))
             .with_for_update()
         ).scalar_one_or_none()
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if (
             oauth_state is None
             or oauth_state.consumed_at is not None
@@ -387,7 +387,7 @@ class MCPDelegatedIdentityService:
                 payload, binding=delegated_identity_binding(identity.id)
             )
             self.db.add(identity)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         skew = timedelta(seconds=max(0, settings.mcp_oauth_token_expiry_skew_seconds))
         if identity.expires_at and now + skew < identity.expires_at:
             if migrated:
@@ -422,7 +422,7 @@ class MCPDelegatedIdentityService:
             raise MCPDelegatedIdentityError("Delegated identity not found")
         identity.revoked = True
         identity.version += 1
-        identity.updated_at = datetime.utcnow()
+        identity.updated_at = datetime.now(timezone.utc)
         self.db.add(identity)
         self.db.commit()
         return identity

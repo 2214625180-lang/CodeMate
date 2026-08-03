@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -85,7 +85,7 @@ def test_tenant_policy_is_default_deny_filters_tools_and_honors_explicit_deny(te
             tool_name="search",
             permissions_json=["execute"],
             effect="deny",
-            expires_at=datetime.utcnow() + timedelta(minutes=5),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
             created_by="test",
         )
     )
@@ -176,7 +176,7 @@ def test_delegated_oauth_pkce_one_time_proof_refresh_and_revoke(tenancy_db, monk
             identity.encrypted_token_payload,
             binding=delegated_identity_binding("different-identity"),
         )
-    identity.expires_at = datetime.utcnow() - timedelta(seconds=1)
+    identity.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
     db.commit()
 
     assert service.access_token(identity_id) == "access-2"

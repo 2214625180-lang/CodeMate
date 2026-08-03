@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import create_engine
@@ -139,7 +139,7 @@ def test_expired_approval_is_rejected_and_checkpoint_tampering_is_detected(appro
     db, run = approval_db
     service = MCPApprovalService(db)
     approval = create_approval(db, run)
-    approval.expires_at = datetime.utcnow() - timedelta(seconds=1)
+    approval.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
     db.add(approval)
     db.commit()
 

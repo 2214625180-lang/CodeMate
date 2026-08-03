@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import create_engine
@@ -67,7 +67,7 @@ def test_circuit_opens_rejects_and_recovers_through_half_open(operations_db, mon
     db.refresh(opened)
     assert opened.circuit_rejections == 1
 
-    opened.cooldown_until = datetime.utcnow() - timedelta(seconds=1)
+    opened.cooldown_until = datetime.now(timezone.utc) - timedelta(seconds=1)
     db.add(opened)
     db.commit()
     half_open = service.before_execution("tracker", "execution-trial")
@@ -201,7 +201,7 @@ def test_snapshot_and_prometheus_include_execution_recovery_and_alerts(
         lease_token=claim.lease_token or "",
         reason="outcome unknown",
     )
-    unknown.updated_at = datetime.utcnow() - timedelta(seconds=2)
+    unknown.updated_at = datetime.now(timezone.utc) - timedelta(seconds=2)
     unknown.recovery_count = 2
     db.add(unknown)
     db.commit()

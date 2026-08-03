@@ -1,6 +1,6 @@
 import json
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -44,7 +44,7 @@ class EvaluationArtifactService:
 
         return {
             "artifact_version": "eval-run-artifact/v1",
-            "generated_at": datetime.utcnow(),
+            "generated_at": datetime.now(timezone.utc),
             "run": self._run_metadata(run),
             "summary": self._summary(run, cases),
             "cases": cases,

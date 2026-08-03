@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.time import UTCDateTime, utc_now
 from app.core.database import Base
 
 
@@ -32,13 +33,13 @@ class MCPToolApproval(Base):
     result_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    requested_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
-    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
-    decided_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    execution_started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    execution_finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    requested_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=utc_now)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, index=True)
+    decided_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    execution_started_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    execution_finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+        UTCDateTime, nullable=False, default=utc_now, onupdate=utc_now
     )
 
     run = relationship("AgentRun", back_populates="mcp_approvals")

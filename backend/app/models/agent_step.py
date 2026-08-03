@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String
+from sqlalchemy import ForeignKey, Integer, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.time import UTCDateTime, utc_now
 from app.core.database import Base
 
 
@@ -19,6 +20,6 @@ class AgentStep(Base):
     input_json: Mapped[dict | list | None] = mapped_column(JSON, nullable=True)
     output_json: Mapped[dict | list | None] = mapped_column(JSON, nullable=True)
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=utc_now)
 
     run = relationship("AgentRun", back_populates="steps")

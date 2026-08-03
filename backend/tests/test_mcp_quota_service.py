@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from redis.exceptions import RedisError
@@ -171,7 +171,7 @@ def test_quota_freeze_run_duration_and_principal_scope(quota_db):
         run_id=run.id,
         principal_type="agent",
         principal_id="codemate-agent",
-        run_created_at=datetime.utcnow() - timedelta(minutes=1),
+        run_created_at=datetime.now(timezone.utc) - timedelta(minutes=1),
     )
     with pytest.raises(MCPQuotaExceededError) as frozen:
         service.reserve(
@@ -305,7 +305,7 @@ def test_reconciliation_evidence_and_retention_cleanup(quota_db):
     )
     service.release(reservation, outcome="succeeded")
     event = db.get(MCPQuotaEvent, reservation.event_id)
-    event.created_at = datetime.utcnow() - timedelta(days=120)
+    event.created_at = datetime.now(timezone.utc) - timedelta(days=120)
     event.updated_at = event.created_at
     db.add(event)
     db.commit()

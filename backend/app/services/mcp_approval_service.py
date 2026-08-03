@@ -1,7 +1,7 @@
 import hashlib
 import json
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -64,7 +64,7 @@ class MCPApprovalService:
         if len(checkpoint_serialized) > settings.mcp_approval_max_checkpoint_chars:
             raise MCPApprovalConflictError("Agent checkpoint exceeds the configured size limit")
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         approval = MCPToolApproval(
             id=approval_id,
             run_id=run.id,
@@ -138,7 +138,7 @@ class MCPApprovalService:
                 return approval
             raise MCPApprovalConflictError("MCP approval has already been decided")
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         expired = now >= approval.expires_at
         approval.decision = "rejected" if expired else normalized_decision
         approval.decision_note = "Approval expired before decision" if expired else note
@@ -161,7 +161,7 @@ class MCPApprovalService:
         ).scalar_one_or_none()
         if approval is None or approval.status != "pending":
             return None
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if now < approval.expires_at:
             return None
         approval.decision = "rejected"
@@ -185,7 +185,7 @@ class MCPApprovalService:
         ).scalar_one_or_none()
         if approval is None:
             raise MCPApprovalNotFoundError("MCP approval not found")
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if approval.status == "resuming":
             stale_after = timedelta(seconds=max(1, settings.mcp_approval_resume_stale_seconds))
             if approval.execution_started_at and now - approval.execution_started_at < stale_after:
@@ -209,7 +209,7 @@ class MCPApprovalService:
         result: dict[str, Any],
         failed: bool = False,
     ) -> MCPToolApproval:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         approval.status = "failed" if failed else "completed"
         approval.result_json = jsonable(result)
         approval.error_message = str(result.get("error"))[:4000] if failed else None

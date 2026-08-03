@@ -2,7 +2,7 @@ import json
 import re
 import tomllib
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy import select
@@ -42,8 +42,8 @@ class RepoMemoryService:
 
         repository.memory_summary = self._build_summary(repository, memory_data)
         repository.memory_data = memory_data
-        repository.memory_updated_at = datetime.utcnow()
-        repository.updated_at = datetime.utcnow()
+        repository.memory_updated_at = datetime.now(timezone.utc)
+        repository.updated_at = datetime.now(timezone.utc)
         self.db.add(repository)
         self.db.commit()
         self.db.refresh(repository)

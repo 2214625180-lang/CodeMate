@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from time import perf_counter
 from typing import Any
 
@@ -28,7 +28,7 @@ class AgentStepService:
             input_json=input_json,
             output_json=output_json,
             duration_ms=duration_ms,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
         self.db.add(step)
         self.db.commit()

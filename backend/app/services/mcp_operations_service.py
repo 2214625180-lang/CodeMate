@@ -1,7 +1,7 @@
 import asyncio
 import math
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from time import perf_counter
 from typing import Any
 
@@ -35,7 +35,7 @@ class MCPCircuitOpenError(MCPOperationsError):
         if health.cooldown_until:
             retry_after = max(
                 0,
-                math.ceil((health.cooldown_until - datetime.utcnow()).total_seconds()),
+                math.ceil((health.cooldown_until - datetime.now(timezone.utc)).total_seconds()),
             )
         super().__init__(f"MCP circuit is open for server '{health.server_name}'")
         self.server_name = health.server_name
@@ -52,7 +52,7 @@ class MCPOperationsService:
             name = str(server["name"])
             health = self._locked_or_create(name)
             health.public_url = str(server.get("url") or "") or None
-            health.updated_at = datetime.utcnow()
+            health.updated_at = datetime.now(timezone.utc)
             self.db.add(health)
             self.db.commit()
             self.db.refresh(health)
@@ -76,7 +76,7 @@ class MCPOperationsService:
 
     def before_execution(self, server_name: str, execution_id: str) -> MCPServerHealth:
         health = self._locked_or_create(server_name)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if settings.mcp_circuit_breaker_enabled:
             if health.circuit_state == "open":
                 if health.manual_open or not health.cooldown_until or now < health.cooldown_until:
@@ -121,7 +121,7 @@ class MCPOperationsService:
 
     def record_transport_success(self, server_name: str, latency_ms: float) -> MCPServerHealth:
         health = self._locked_or_create(server_name)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         health.total_transport_successes += 1
         health.consecutive_failures = 0
         health.last_success_at = now
@@ -143,7 +143,7 @@ class MCPOperationsService:
         latency_ms: float,
     ) -> MCPServerHealth:
         health = self._locked_or_create(server_name)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         health.total_transport_failures += 1
         self._record_failure(health, error, latency_ms, now)
         health.version += 1
@@ -163,7 +163,7 @@ class MCPOperationsService:
         error: Exception | str | None = None,
     ) -> MCPServerHealth:
         health = self._locked_or_create(server_name)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         health.total_probes += 1
         health.last_probe_at = now
         health.last_latency_ms = round(latency_ms, 2)
@@ -200,7 +200,7 @@ class MCPOperationsService:
         health = self._locked_existing(server_name)
         if health.version != expected_version:
             raise MCPCircuitConflictError("MCP server health version conflict")
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if action == "open":
             self._open_circuit(health, now, manual=True)
         else:
@@ -254,7 +254,7 @@ class MCPOperationsService:
 
     def snapshot(self, *, window_minutes: int | None = None) -> dict[str, Any]:
         window = max(1, window_minutes or settings.mcp_observability_window_minutes)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         cutoff = now - timedelta(minutes=window)
         executions = list(
             self.db.execute(
@@ -397,7 +397,7 @@ class MCPOperationsService:
         *,
         now: datetime | None = None,
     ) -> dict[str, Any]:
-        reference = now or datetime.utcnow()
+        reference = now or datetime.now(timezone.utc)
         return {
             "server_name": health.server_name,
             "public_url": health.public_url,

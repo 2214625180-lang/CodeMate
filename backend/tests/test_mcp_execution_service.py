@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import create_engine
@@ -148,7 +148,7 @@ def test_expired_lease_retries_only_with_remote_idempotency_contract(
     )
     for execution in (safe, unsafe):
         claimed = service.claim(execution.id).execution
-        claimed.lease_expires_at = datetime.utcnow() - timedelta(seconds=1)
+        claimed.lease_expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
         db.add(claimed)
         db.commit()
 

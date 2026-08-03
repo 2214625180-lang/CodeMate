@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.time import UTCDateTime, utc_now
 from app.core.database import Base
 
 
@@ -25,9 +26,9 @@ class MCPDelegatedOAuthProvider(Base):
     scopes_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     redirect_uri: Mapped[str] = mapped_column(String(2048), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+        UTCDateTime, nullable=False, default=utc_now, onupdate=utc_now
     )
 
 
@@ -47,12 +48,12 @@ class MCPDelegatedIdentity(Base):
     encrypted_token_payload: Mapped[str] = mapped_column(Text, nullable=False)
     delegation_token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     scopes_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+        UTCDateTime, nullable=False, default=utc_now, onupdate=utc_now
     )
 
 
@@ -66,5 +67,5 @@ class MCPDelegatedOAuthState(Base):
     subject_provider: Mapped[str] = mapped_column(String(64), nullable=False)
     subject: Mapped[str] = mapped_column(String(255), nullable=False)
     encrypted_verifier: Mapped[str] = mapped_column(Text, nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
-    consumed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, index=True)
+    consumed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)

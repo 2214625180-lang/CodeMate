@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.time import UTCDateTime, utc_now
 from app.core.database import Base
 
 
@@ -35,15 +36,15 @@ class MCPQuotaPolicy(Base):
     frozen: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
     temporary_override_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     temporary_override_expires_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True, index=True
+        UTCDateTime, nullable=True, index=True
     )
-    reset_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    reset_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_by: Mapped[str] = mapped_column(String(255), nullable=False)
     updated_by: Mapped[str] = mapped_column(String(255), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+        UTCDateTime, nullable=False, default=utc_now, onupdate=utc_now
     )
 
     charges = relationship("MCPQuotaCharge", cascade="all, delete-orphan")
@@ -70,11 +71,11 @@ class MCPQuotaEvent(Base):
     cost_units: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="reserved", index=True)
     lease_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
-    released_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True, index=True)
+    released_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+        UTCDateTime, nullable=False, default=utc_now, onupdate=utc_now
     )
 
     charges = relationship("MCPQuotaCharge", cascade="all, delete-orphan")
@@ -95,7 +96,7 @@ class MCPQuotaCharge(Base):
     )
     calls: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     cost_units: Mapped[float] = mapped_column(Float, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=utc_now)
 
 
 class MCPQuotaRejection(Base):
@@ -116,7 +117,7 @@ class MCPQuotaRejection(Base):
     retry_after_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     metadata_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=utc_now)
 
 
 class MCPQuotaReconciliation(Base):
@@ -128,4 +129,4 @@ class MCPQuotaReconciliation(Base):
     repaired: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     drift_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=utc_now)

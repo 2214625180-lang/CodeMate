@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.time import UTCDateTime, utc_now
 from app.core.database import Base
 
 
@@ -23,4 +24,4 @@ class EvaluationDatasetSnapshot(Base):
     gate_policy_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     cases_json: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
     metadata_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=utc_now)

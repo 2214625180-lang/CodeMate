@@ -1,6 +1,6 @@
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -105,7 +105,7 @@ async def test_real_postgres_redis_mcp_oauth_and_reconciliation(monkeypatch):
         policy = quota.list_policies(tenant.id)[0]
         day_key = (
             f"codemate:e2e:quota:{policy.id}:day:"
-            f"{datetime.utcnow().strftime('%Y%m%d')}"
+            f"{datetime.now(timezone.utc).strftime('%Y%m%d')}"
         )
         quota.redis.hset(day_key, mapping={"calls": 0, "cost": 0})
         report = quota.reconcile_redis(tenant.id, repair=True)

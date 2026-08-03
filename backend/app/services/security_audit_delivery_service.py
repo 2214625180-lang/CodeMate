@@ -73,7 +73,7 @@ class SecurityAuditDeliveryService:
             try:
                 receipt = self._deliver(delivery)
                 delivery.status = "delivered"
-                delivery.delivered_at = datetime.utcnow()
+                delivery.delivered_at = datetime.now(timezone.utc)
                 delivery.remote_receipt_json = receipt
                 delivery.last_error = None
                 counts["delivered"] += 1
@@ -85,11 +85,11 @@ class SecurityAuditDeliveryService:
                 else:
                     delivery.status = "retry"
                     delay = min(3600, 2 ** min(10, delivery.attempt_count))
-                    delivery.next_attempt_at = datetime.utcnow() + timedelta(seconds=delay)
+                    delivery.next_attempt_at = datetime.now(timezone.utc) + timedelta(seconds=delay)
                     counts["retry"] += 1
             delivery.lease_token = None
             delivery.lease_expires_at = None
-            delivery.updated_at = datetime.utcnow()
+            delivery.updated_at = datetime.now(timezone.utc)
             self.db.add(delivery)
             self.db.commit()
         return counts
@@ -126,7 +126,7 @@ class SecurityAuditDeliveryService:
             )
         oldest_age = 0.0
         if oldest_pending:
-            oldest_age = max(0.0, (datetime.utcnow() - oldest_pending).total_seconds())
+            oldest_age = max(0.0, (datetime.now(timezone.utc) - oldest_pending).total_seconds())
         return {
             "event_id": event_id,
             "configured_sinks": sorted(settings.security_audit_sink_set),
@@ -136,7 +136,7 @@ class SecurityAuditDeliveryService:
         }
 
     def purge_delivered(self) -> int:
-        cutoff = datetime.utcnow() - timedelta(
+        cutoff = datetime.now(timezone.utc) - timedelta(
             days=max(30, settings.security_audit_outbox_retention_days)
         )
         result = self.db.execute(
@@ -165,7 +165,7 @@ class SecurityAuditDeliveryService:
             row.lease_token = None
             row.lease_expires_at = None
             row.last_error = None
-            row.updated_at = datetime.utcnow()
+            row.updated_at = datetime.now(timezone.utc)
             self.db.add(row)
         self.db.commit()
         return len(rows)
@@ -186,7 +186,7 @@ class SecurityAuditDeliveryService:
         }
 
     def _claim_batch(self, limit: int) -> list[tuple[str, str]]:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         rows = list(
             self.db.scalars(
                 select(SecurityAuditDelivery)

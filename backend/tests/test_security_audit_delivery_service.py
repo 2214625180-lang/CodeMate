@@ -44,7 +44,7 @@ def test_outbox_delivers_each_sink_idempotently(tmp_path, monkeypatch):
     assert {item["sink"] for item in status["deliveries"]} == {"http", "s3"}
     assert all(item["status"] == "delivered" for item in status["deliveries"])
     for row in db.query(SecurityAuditDelivery).all():
-        row.delivered_at = datetime.utcnow() - timedelta(days=120)
+        row.delivered_at = datetime.now(timezone.utc) - timedelta(days=120)
     db.commit()
     monkeypatch.setattr(settings, "security_audit_outbox_retention_days", 90)
     assert service.purge_delivered() == 2

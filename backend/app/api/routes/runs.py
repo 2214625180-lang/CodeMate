@@ -1,7 +1,7 @@
 import json
 import time
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -53,7 +53,7 @@ def submit_run_feedback(
 
     run.feedback_status = payload.status
     run.feedback_note = payload.note
-    run.feedback_at = datetime.utcnow()
+    run.feedback_at = datetime.now(timezone.utc)
     db.add(run)
     db.commit()
     db.refresh(run)

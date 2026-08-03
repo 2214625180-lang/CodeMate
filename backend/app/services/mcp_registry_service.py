@@ -4,7 +4,7 @@ import hashlib
 import ipaddress
 import json
 import socket
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections.abc import Callable
 from typing import Any
 from urllib.parse import urlsplit
@@ -78,7 +78,7 @@ class MCPCredentialBroker:
         credential.expires_at = None
         credential.last_error = None
         credential.version = (credential.version or 0) + 1 if credential.id else 1
-        credential.updated_at = datetime.utcnow()
+        credential.updated_at = datetime.now(timezone.utc)
         self.db.add(credential)
         self.db.commit()
         self.db.refresh(credential)
@@ -96,7 +96,7 @@ class MCPCredentialBroker:
             credential.encrypted_payload = encrypt_payload(payload, binding=credential.server_id)
             credential.key_version = settings.mcp_registry_key_version
             credential.version += 1
-            credential.updated_at = datetime.utcnow()
+            credential.updated_at = datetime.now(timezone.utc)
             self.db.add(credential)
         self.db.commit()
         return len(credentials)
@@ -130,7 +130,7 @@ class MCPCredentialBroker:
         }
 
     def _oauth_access_token(self, credential: MCPCredential, payload: dict[str, Any]) -> str:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         cached = str(payload.get("access_token") or "")
         expires_at = parse_iso(payload.get("access_token_expires_at"))
         skew = timedelta(seconds=max(0, settings.mcp_oauth_token_expiry_skew_seconds))
@@ -297,7 +297,7 @@ class MCPRegistryService:
         server.validation_error = None
         server.version += 1
         server.updated_by = actor
-        server.updated_at = datetime.utcnow()
+        server.updated_at = datetime.now(timezone.utc)
         if old_name != server.name:
             old_health = self.db.get(MCPServerHealth, old_name)
             if old_health is not None:
@@ -401,10 +401,10 @@ class MCPRegistryService:
         except Exception as exc:
             server.validation_status = "invalid"
             server.validation_error = str(exc)[:4000]
-        server.validated_at = datetime.utcnow()
+        server.validated_at = datetime.now(timezone.utc)
         server.version += 1
         server.updated_by = actor
-        server.updated_at = datetime.utcnow()
+        server.updated_at = datetime.now(timezone.utc)
         self._revision(server, "validate", actor)
         self.db.add(server)
         self.db.commit()
