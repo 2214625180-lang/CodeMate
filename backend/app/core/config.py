@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     llm_timeout_seconds: float = 60.0
     llm_max_context_chars: int = 24_000
     llm_max_output_tokens: int = 4096
+    llm_cost_per_million_tokens_usd: float | None = None
     openai_api_key: str | None = None
     openai_base_url: str = "https://api.openai.com/v1"
     deepseek_api_key: str | None = None

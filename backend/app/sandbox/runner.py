@@ -10,6 +10,7 @@ from typing import Literal
 import httpx
 
 from app.core.config import settings
+from app.core.telemetry import operation_span, record_span_usage
 
 
 @dataclass(slots=True)
@@ -87,6 +88,12 @@ class SandboxService:
             shutil.rmtree(workspace)
 
     def apply_patch(self, *, workspace: Path, diff: str) -> dict:
+        return self._trace_sandbox_operation(
+            "apply_patch",
+            lambda: self._apply_patch(workspace=workspace, diff=diff),
+        )
+
+    def _apply_patch(self, *, workspace: Path, diff: str) -> dict:
         if not diff.strip():
             return {"ok": False, "stdout": "", "stderr": "Empty patch"}
 
@@ -108,6 +115,12 @@ class SandboxService:
         }
 
     def git_diff(self, *, workspace: Path) -> str:
+        return self._trace_sandbox_operation(
+            "git_diff",
+            lambda: self._git_diff(workspace=workspace),
+        )
+
+    def _git_diff(self, *, workspace: Path) -> str:
         result = subprocess.run(
             ["git", "-C", str(workspace), "diff", "--no-ext-diff"],
             capture_output=True,
@@ -118,6 +131,12 @@ class SandboxService:
         return result.stdout if result.returncode == 0 else result.stderr
 
     def reset_workspace(self, *, workspace: Path) -> dict:
+        return self._trace_sandbox_operation(
+            "reset_workspace",
+            lambda: self._reset_workspace(workspace=workspace),
+        )
+
+    def _reset_workspace(self, *, workspace: Path) -> dict:
         reset = subprocess.run(
             ["git", "-C", str(workspace), "reset", "--hard"],
             capture_output=True,
@@ -159,6 +178,12 @@ class SandboxService:
         return None
 
     def run_tests(self, *, workspace: Path, command: str | None) -> TestResult:
+        return self._trace_sandbox_operation(
+            "run_tests",
+            lambda: self._run_tests(workspace=workspace, command=command),
+        )
+
+    def _run_tests(self, *, workspace: Path, command: str | None) -> TestResult:
         runtime = settings.sandbox_runtime.lower()
         if command is None:
             return TestResult(
@@ -453,6 +478,12 @@ class SandboxService:
         )
 
     def list_files(self, *, workspace: Path, pattern: str | None = None) -> list[str]:
+        return self._trace_sandbox_operation(
+            "list_files",
+            lambda: self._list_files(workspace=workspace, pattern=pattern),
+        )
+
+    def _list_files(self, *, workspace: Path, pattern: str | None = None) -> list[str]:
         files: list[str] = []
         for path in workspace.rglob("*"):
             if not path.is_file() or ".git" in path.parts:
@@ -464,6 +495,24 @@ class SandboxService:
         return sorted(files)
 
     def read_file(
+        self,
+        *,
+        workspace: Path,
+        file_path: str,
+        start_line: int | None = None,
+        end_line: int | None = None,
+    ) -> dict:
+        return self._trace_sandbox_operation(
+            "read_file",
+            lambda: self._read_file(
+                workspace=workspace,
+                file_path=file_path,
+                start_line=start_line,
+                end_line=end_line,
+            ),
+        )
+
+    def _read_file(
         self,
         *,
         workspace: Path,
@@ -488,6 +537,21 @@ class SandboxService:
             "end_line": safe_end,
             "content": content,
         }
+
+    def _trace_sandbox_operation(self, operation: str, fn):
+        with operation_span(
+            f"codemate.sandbox.{operation}",
+            component="sandbox",
+            prompt_version="sandbox-v1",
+            attributes={
+                "sandbox.operation": operation,
+                "sandbox.runtime": settings.sandbox_runtime.lower(),
+            },
+        ) as span:
+            try:
+                return fn()
+            finally:
+                record_span_usage(span, cost_usd=0.0)
 
     def _image_for_command(self, command: str) -> str:
         if command.startswith(("npm", "pnpm", "yarn")):

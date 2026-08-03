@@ -6,6 +6,7 @@ from sqlalchemy import Text, and_, func, literal, literal_column, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.telemetry import operation_span, record_span_usage
 from app.embeddings.code_text import build_query_embedding_text
 from app.embeddings.factory import get_embedding_provider
 from app.models.code_chunk import CodeChunk
@@ -75,6 +76,36 @@ class RetrievalService:
         return self.retrieve_many(repo_ids=[repo_id], query=query, top_k=top_k)
 
     def retrieve_many(
+        self,
+        *,
+        repo_ids: list[str],
+        query: str,
+        top_k: int | None = None,
+    ) -> list[RetrievalResult]:
+        limit = top_k or settings.retrieval_top_k
+        with operation_span(
+            "codemate.retrieval.query",
+            component="retrieval",
+            model=settings.embedding_model or "none",
+            prompt_version="retrieval-query-v1",
+            attributes={
+                "retrieval.strategy": settings.retrieval_strategy,
+                "retrieval.repo_count": len(repo_ids),
+                "retrieval.top_k": limit,
+            },
+        ) as span:
+            results = self._retrieve_many(repo_ids=repo_ids, query=query, top_k=top_k)
+            if span is not None:
+                span.set_attribute("retrieval.result_count", len(results))
+            record_span_usage(
+                span,
+                input_tokens=max(1, len(query) // 4),
+                total_tokens=max(1, len(query) // 4),
+                cost_usd=0.0,
+            )
+            return results
+
+    def _retrieve_many(
         self,
         *,
         repo_ids: list[str],
