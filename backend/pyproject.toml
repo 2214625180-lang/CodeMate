@@ -7,6 +7,7 @@ requires-python = ">=3.11"
 [tool.pytest.ini_options]
 pythonpath = [".", ".."]
 markers = ["integration: requires real PostgreSQL, Redis and HTTP services"]
+addopts = "--strict-markers"
 
 [tool.ruff]
 line-length = 100

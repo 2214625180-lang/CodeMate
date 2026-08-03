@@ -1,4 +1,6 @@
 -r requirements.txt
-pytest==8.4.2
+pytest==9.0.3
+pytest-cov==7.1.0
+hypothesis==6.165.0
 ruff==0.15.3
 pip-audit==2.9.0
