@@ -592,9 +592,12 @@ class OpenAICompatibleLLMProvider(BaseLLMProvider):
         edges = graph.get("edges")
         return {
             "kind": graph.get("kind"),
+            "relation": graph.get("relation"),
             "query": graph.get("path") or graph.get("symbol"),
             "direction": graph.get("direction"),
             "depth": graph.get("depth"),
+            "supported_languages": graph.get("supported_languages"),
+            "limitations": graph.get("limitations"),
             "nodes": nodes[:40] if isinstance(nodes, list) else [],
             "edges": edges[:80] if isinstance(edges, list) else [],
             "truncated": bool(graph.get("truncated")),

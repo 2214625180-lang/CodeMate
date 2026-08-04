@@ -49,14 +49,25 @@ class FindReferences(AgentAction):
 
 
 class GetImportGraph(AgentAction):
-    action: Literal["GetImportGraph"]
+    """Navigate imports inferred from indexed source metadata."""
+
+    action: Literal["GetImportGraph"] = Field(
+        description="Inspect static import-navigation candidates from the repository index."
+    )
     path: str = Field(min_length=1, max_length=500)
     direction: Literal["imports", "importers", "both"] = "both"
     depth: int = Field(default=1, ge=1, le=3)
 
 
 class GetCallGraph(AgentAction):
-    action: Literal["GetCallGraph"]
+    """Navigate heuristic call candidates, not resolved compiler call edges."""
+
+    action: Literal["GetCallGraph"] = Field(
+        description=(
+            "Inspect heuristic static-navigation candidates. It does not resolve aliases, "
+            "dynamic dispatch, overloads, re-exports, or cross-language calls."
+        )
+    )
     symbol: str = Field(min_length=1, max_length=255, pattern=r"^[A-Za-z_$][\w$.:/-]*$")
     direction: Literal["callers", "callees", "both"] = "both"
     depth: int = Field(default=1, ge=1, le=3)

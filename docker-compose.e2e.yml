@@ -1,0 +1,55 @@
+services:
+  postgres:
+    ports: !override
+      - "127.0.0.1:15432:5432"
+
+  redis:
+    ports: !override
+      - "127.0.0.1:16379:6379"
+
+  qdrant:
+    ports: !override
+      - "127.0.0.1:16333:6333"
+      - "127.0.0.1:16334:6334"
+
+  migrate:
+    volumes:
+      - ./backend/app:/app/app:ro
+      - ./backend/alembic:/app/alembic:ro
+
+  backend:
+    environment:
+      APP_ENV: e2e
+      API_CORS_ORIGINS: http://127.0.0.1:3100
+      FRONTEND_URL: http://127.0.0.1:3100
+      PRODUCT_API_TOKEN: ""
+      CODEMATE_PRODUCT_IDENTITY_SECRET: ""
+      CODEMATE_PRODUCT_IDENTITY_PREVIOUS_SECRET: ""
+      CODEMATE_REQUIRE_SIGNED_BROWSER_IDENTITY: "false"
+      MCP_ENABLED: "false"
+      MCP_CLIENT_ENABLED: "false"
+      MCP_REGISTRY_ENABLED: "false"
+      MCP_HEALTH_MONITOR_ENABLED: "false"
+      OTEL_ENABLED: "false"
+      SECURITY_AUDIT_EXPORT_REQUIRED: "false"
+      SECURITY_AUDIT_FAIL_CLOSED: "false"
+    ports: !override
+      - "127.0.0.1:18000:8000"
+    volumes:
+      - ./backend/alembic:/app/alembic:ro
+
+  e2e-seed:
+    build:
+      context: ./backend
+    command: ["python", "/e2e/seed_verified_fix.py"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://codemate:codemate@postgres:5432/codemate
+      DATABASE_MIGRATIONS_ENABLED: "false"
+      PYTHONPATH: /app
+    volumes:
+      - ./backend/app:/app/app:ro
+      - ./backend/alembic:/app/alembic:ro
+      - ./backend/tests/e2e:/e2e:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully

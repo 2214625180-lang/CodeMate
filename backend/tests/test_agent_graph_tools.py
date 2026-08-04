@@ -11,7 +11,7 @@ from app.models.code_file import CodeFile
 from app.models.repository import Repository
 
 
-def test_import_and_call_graph_tools_use_existing_index_metadata(tmp_path: Path) -> None:
+def test_static_navigation_tools_use_existing_index_metadata(tmp_path: Path) -> None:
     engine = create_engine(f"sqlite:///{tmp_path / 'graphs.db'}")
     Base.metadata.create_all(engine)
     db = sessionmaker(bind=engine, expire_on_commit=False)()
@@ -118,6 +118,8 @@ def test_import_and_call_graph_tools_use_existing_index_metadata(tmp_path: Path)
     import_graph = tools.get_import_graph("src/main.py", direction="imports", depth=2)
     call_graph = tools.get_call_graph("calculate_total", direction="callers", depth=1)
 
+    assert import_graph["kind"] == "static_navigation"
+    assert import_graph["relation"] == "imports"
     assert {(edge["from"], edge["to"]) for edge in import_graph["edges"]} == {
         ("src/main.py", "src/service.py"),
         ("src/service.py", "src/calculator.py"),
@@ -128,7 +130,57 @@ def test_import_and_call_graph_tools_use_existing_index_metadata(tmp_path: Path)
         "symbol:src/client.py:1:render",
         "symbol:src/main.py:1:run",
     }
+    assert call_graph["kind"] == "static_navigation"
+    assert call_graph["relation"] == "call_candidates"
+    assert call_graph["supported_languages"] == ["python", "javascript", "typescript", "vue"]
+    assert call_graph["limitations"] == [
+        "Relations are candidates inferred from indexed chunks and identifier-pattern matching.",
+        "Aliases, dynamic dispatch, overloads, re-exports, and cross-language calls are not resolved.",
+        "Inspect the referenced source before treating a candidate relation as a dependency.",
+    ]
+    assert {edge["kind"] for edge in call_graph["edges"]} == {"possible_call"}
+    assert {edge["resolution"] for edge in call_graph["edges"]} == {"unresolved"}
+    assert {edge["match_method"] for edge in call_graph["edges"]} == {"identifier_pattern"}
     assert {step.tool_name for step in run.steps if step.step_type == "tool_call"} == {
         "get_import_graph",
         "get_call_graph",
     }
+
+
+def test_static_call_navigation_marks_unresolved_symbols_as_candidates(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'unresolved-symbols.db'}")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine, expire_on_commit=False)()
+    repository = Repository(
+        id="repo-unresolved-symbols",
+        name="unresolved-symbols",
+        repo_url="https://example.com/unresolved-symbols.git",
+        status="indexed",
+    )
+    run = AgentRun(
+        id="run-unresolved-symbols",
+        repo_id=repository.id,
+        user_input="Navigate missing_target",
+        status="pending",
+    )
+    db.add_all([repository, run])
+    db.commit()
+
+    tools = AgentTools(
+        db=db,
+        run_id=run.id,
+        repo_id=repository.id,
+        workspace=tmp_path,
+        sandbox=object(),  # type: ignore[arg-type]
+    )
+
+    navigation = tools.get_call_graph("missing_target", direction="callees", depth=1)
+
+    assert navigation["nodes"] == [
+        {
+            "id": "unresolved_symbol:missing_target",
+            "kind": "unresolved_symbol",
+            "name": "missing_target",
+        }
+    ]
+    assert navigation["edges"] == []

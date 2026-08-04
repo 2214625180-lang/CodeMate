@@ -15,6 +15,12 @@ from app.services.retrieval_service import RetrievalService
 class AgentTools:
     GRAPH_MAX_NODES = 80
     GRAPH_MAX_EDGES = 120
+    STATIC_NAVIGATION_LANGUAGES = ("python", "javascript", "typescript", "vue")
+    STATIC_NAVIGATION_LIMITATIONS = (
+        "Relations are candidates inferred from indexed chunks and identifier-pattern matching.",
+        "Aliases, dynamic dispatch, overloads, re-exports, and cross-language calls are not resolved.",
+        "Inspect the referenced source before treating a candidate relation as a dependency.",
+    )
     CALL_RE = re.compile(
         r"(?<![\w$])([A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)?)\s*\("
     )
@@ -253,7 +259,7 @@ class AgentTools:
         normalized_path = path.strip()
         if normalized_path not in by_path:
             return {
-                "kind": "import",
+                **self._static_navigation_metadata(relation="imports"),
                 "path": normalized_path,
                 "direction": direction,
                 "depth": depth,
@@ -332,7 +338,7 @@ class AgentTools:
                         break
 
         return {
-            "kind": "import",
+            **self._static_navigation_metadata(relation="imports"),
             "path": normalized_path,
             "direction": direction,
             "depth": depth,
@@ -368,7 +374,13 @@ class AgentTools:
             if len(edges) >= self.GRAPH_MAX_EDGES:
                 truncated = True
                 return False
-            edges[key] = {"from": source, "to": target, "kind": "calls"}
+            edges[key] = {
+                "from": source,
+                "to": target,
+                "kind": "possible_call",
+                "resolution": "unresolved",
+                "match_method": "identifier_pattern",
+            }
             return True
 
         for current_depth in range(depth):
@@ -387,8 +399,8 @@ class AgentTools:
                 if not target_nodes:
                     target_nodes = [
                         {
-                            "id": f"external_symbol:{current_symbol}",
-                            "kind": "external_symbol",
+                            "id": f"unresolved_symbol:{current_symbol}",
+                            "kind": "unresolved_symbol",
                             "name": current_symbol,
                         }
                     ]
@@ -422,8 +434,8 @@ class AgentTools:
                             if not targets:
                                 targets = [
                                     {
-                                        "id": f"external_symbol:{callee}",
-                                        "kind": "external_symbol",
+                                        "id": f"unresolved_symbol:{callee}",
+                                        "kind": "unresolved_symbol",
                                         "name": callee,
                                     }
                                 ]
@@ -437,13 +449,22 @@ class AgentTools:
                 break
 
         return {
-            "kind": "call",
+            **self._static_navigation_metadata(relation="call_candidates"),
             "symbol": symbol,
             "direction": direction,
             "depth": depth,
             "nodes": [nodes[key] for key in sorted(nodes)],
             "edges": [edges[key] for key in sorted(edges)],
             "truncated": truncated,
+        }
+
+    @classmethod
+    def _static_navigation_metadata(cls, *, relation: str) -> dict:
+        return {
+            "kind": "static_navigation",
+            "relation": relation,
+            "supported_languages": list(cls.STATIC_NAVIGATION_LANGUAGES),
+            "limitations": list(cls.STATIC_NAVIGATION_LIMITATIONS),
         }
 
     def _indexed_files(self) -> list[CodeFile]:
