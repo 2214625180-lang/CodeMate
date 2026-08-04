@@ -80,10 +80,7 @@ class IndexService:
             chunk_count = self._scanned_chunk_count(scanned_files)
             self._update_repository(repository, status="embedding")
 
-            self.vector_store.ensure_collection(
-                self.embedding_provider.dimension,
-                recreate_on_mismatch=True,
-            )
+            self.vector_store.ensure_collection(self.embedding_provider.dimension)
             old_point_ids = self._chunk_point_ids(repository.id)
             self.db.execute(delete(CodeChunk).where(CodeChunk.repo_id == repository.id))
             self.db.execute(delete(CodeFile).where(CodeFile.repo_id == repository.id))
@@ -138,10 +135,7 @@ class IndexService:
             commit_hash = self._read_commit_hash(staging_workspace)
             self._update_repository(repository, status="parsing")
 
-            self.vector_store.ensure_collection(
-                self.embedding_provider.dimension,
-                recreate_on_mismatch=True,
-            )
+            self.vector_store.ensure_collection(self.embedding_provider.dimension)
             scanned_files = self._scan_source_files(staging_workspace)
             scanned_by_path = {file.relative_path: file for file in scanned_files}
             language_summary = Counter(file.language for file in scanned_files)
