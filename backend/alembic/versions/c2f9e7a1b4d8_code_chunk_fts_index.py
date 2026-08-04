@@ -17,6 +17,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # SQLite backs the fast migration test path; PostgreSQL is verified by the
+    # real-infrastructure migration job, where this GIN index is required.
+    if op.get_bind().dialect.name != "postgresql":
+        return
+
     op.execute(
         """
         CREATE INDEX ix_code_chunks_fts ON code_chunks USING GIN (
@@ -32,4 +37,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if op.get_bind().dialect.name != "postgresql":
+        return
+
     op.execute("DROP INDEX ix_code_chunks_fts")

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 from app.core import database
 from app.core.config import settings
@@ -21,6 +21,19 @@ pytestmark = pytest.mark.skipif(
     os.getenv("RUN_MCP_E2E") != "1",
     reason="Set RUN_MCP_E2E=1 with real PostgreSQL, Redis, MCP and OAuth services",
 )
+
+
+def test_postgresql_fts_migration_creates_gin_index():
+    with database.engine.connect() as connection:
+        index_definition = connection.execute(
+            text(
+                "SELECT indexdef FROM pg_indexes "
+                "WHERE schemaname = 'public' AND indexname = 'ix_code_chunks_fts'"
+            )
+        ).scalar_one_or_none()
+
+    assert index_definition is not None
+    assert "USING gin" in index_definition
 
 
 @pytest.mark.anyio
