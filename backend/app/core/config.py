@@ -154,6 +154,8 @@ class Settings(BaseSettings):
     agent_max_read_lines: int = 800
     agent_max_evidence_items: int = 40
     agent_max_action_history: int = 64
+    agent_timeline_sensitive_retention_hours: int = 24
+    agent_timeline_cleanup_interval_seconds: int = 3600
     evaluation_llm_cost_per_million_tokens_usd: float | None = None
     sandbox_workspace_dir: str = "/tmp/codemate-runs"
     sandbox_timeout_seconds: int = 120
@@ -357,6 +359,14 @@ class Settings(BaseSettings):
         if invalid_agent_limits:
             raise RuntimeError(
                 f"{', '.join(invalid_agent_limits)} must be positive integers."
+            )
+        if not 1 <= self.agent_timeline_sensitive_retention_hours <= 168:
+            raise RuntimeError(
+                "AGENT_TIMELINE_SENSITIVE_RETENTION_HOURS must be between 1 and 168."
+            )
+        if self.agent_timeline_cleanup_interval_seconds < 300:
+            raise RuntimeError(
+                "AGENT_TIMELINE_CLEANUP_INTERVAL_SECONDS must be at least 300."
             )
         if self.otel_enabled and not (self.otel_exporter_otlp_endpoint or "").strip():
             raise RuntimeError(

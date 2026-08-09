@@ -3,6 +3,7 @@ from time import perf_counter
 from typing import Any, Iterator
 
 from app.core.config import settings
+from app.core.sensitive_data import safe_exception_code
 
 
 def configure_telemetry() -> None:
@@ -126,7 +127,9 @@ def mark_span_error(span: Any | None, error: Exception | str) -> None:
         return
     from opentelemetry.trace import Status, StatusCode
 
-    message = str(error)[:1000]
-    if isinstance(error, Exception):
-        span.record_exception(error)
-    span.set_status(Status(StatusCode.ERROR, message))
+    error_code = safe_exception_code(error)
+    record_exception = getattr(span, "record_exception", None)
+    if callable(record_exception):
+        record_exception(RuntimeError(error_code))
+    span.set_attribute("codemate.error_code", error_code)
+    span.set_status(Status(StatusCode.ERROR, error_code))

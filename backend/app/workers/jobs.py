@@ -178,6 +178,24 @@ def deliver_security_audit_job(recurring: bool = False) -> None:
                 logger.exception("Failed to reschedule security audit delivery")
 
 
+def purge_agent_timeline_payloads_job(recurring: bool = False) -> None:
+    db = SessionLocal()
+    try:
+        AgentStepService(db).purge_expired_payloads()
+    finally:
+        db.close()
+        if recurring:
+            try:
+                from app.core.queue import enqueue_agent_timeline_payload_cleanup
+
+                enqueue_agent_timeline_payload_cleanup(
+                    delay_seconds=max(300, settings.agent_timeline_cleanup_interval_seconds),
+                    recurring=True,
+                )
+            except Exception:  # noqa: BLE001 - startup can restore the schedule.
+                logger.exception("Failed to reschedule agent Timeline payload cleanup")
+
+
 def scan_mcp_compliance_job(recurring: bool = False) -> None:
     try:
         from app.services.mcp_compliance_service import scan_and_persist

@@ -40,10 +40,8 @@ import type {
   SecurityAuditDeliveryStatus
 } from "./types";
 
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(apiUrl(path), {
+  const response = await fetch(backendApiUrl(path), {
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -65,21 +63,11 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
-function apiUrl(path: string): string {
-  if (
-    path === "/evaluations" ||
-    path.startsWith("/evaluations?") ||
-    path.startsWith("/evaluations/") ||
-    path.startsWith("/mcp-approvals/")
-    || path.startsWith("/mcp-executions/")
-    || path.startsWith("/mcp-operations/")
-    || path.startsWith("/mcp-registry/")
-    || path.startsWith("/mcp-tenancy/")
-    || path.startsWith("/mcp-quotas/")
-  ) {
-    return `/api/backend${path}`;
+export function backendApiUrl(path: string): string {
+  if (!path.startsWith("/")) {
+    throw new Error("Backend API paths must start with '/'");
   }
-  return `${API_BASE_URL}${path}`;
+  return `/api/backend${path}`;
 }
 
 export function listRepositories(): Promise<Repository[]> {

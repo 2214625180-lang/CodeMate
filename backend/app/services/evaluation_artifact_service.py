@@ -6,6 +6,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.sensitive_data import redact_timeline_payload
 from app.models.agent_run import AgentRun
 from app.models.agent_step import AgentStep
 from app.models.evaluation import Evaluation
@@ -142,12 +143,16 @@ class EvaluationArtifactService:
         }
 
     def _step_artifact(self, step: AgentStep, *, max_payload_chars: int) -> dict:
+        input_json, input_classification = redact_timeline_payload(step.input_json)
+        output_json, output_classification = redact_timeline_payload(step.output_json)
         return {
             "id": step.id,
             "step_type": step.step_type,
             "tool_name": step.tool_name,
-            "input_json": self._bounded_payload(step.input_json, max_payload_chars),
-            "output_json": self._bounded_payload(step.output_json, max_payload_chars),
+            "input_json": self._bounded_payload(input_json, max_payload_chars),
+            "output_json": self._bounded_payload(output_json, max_payload_chars),
+            "input_classification": step.input_classification or input_classification,
+            "output_classification": step.output_classification or output_classification,
             "duration_ms": step.duration_ms,
             "created_at": step.created_at,
         }

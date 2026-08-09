@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createFixRun, getFileContent, reviewRepository } from "@/lib/api";
+import {
+  backendApiUrl,
+  createFixRun,
+  getFileContent,
+  listRepositories,
+  reviewRepository
+} from "@/lib/api";
 
 describe("frontend API client", () => {
   afterEach(() => {
@@ -19,7 +25,7 @@ describe("frontend API client", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:8000/repos/repo-1/fix",
+      "/api/backend/repos/repo-1/fix",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
@@ -30,6 +36,20 @@ describe("frontend API client", () => {
         })
       })
     );
+  });
+
+  it("routes product APIs through the signed server-side proxy", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("[]", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(listRepositories()).resolves.toEqual([]);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/backend/repos",
+      expect.objectContaining({ cache: "no-store" })
+    );
+    expect(backendApiUrl("/runs/run-1/trace")).toBe("/api/backend/runs/run-1/trace");
+    expect(() => backendApiUrl("repos")).toThrow("must start with '/'");
   });
 
   it("encodes file paths and surfaces backend failures", async () => {

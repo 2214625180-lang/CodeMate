@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -48,9 +48,24 @@ class AgentStepRead(BaseModel):
     run_id: str
     step_type: str
     tool_name: str | None
-    input_json: dict | list | None
-    output_json: dict | list | None
+    input_json: Any
+    output_json: Any
+    input_classification: str | None = None
+    output_classification: str | None = None
     duration_ms: int | None
+    created_at: datetime
+
+
+class AgentStepRestrictedRead(BaseModel):
+    id: str
+    run_id: str
+    step_type: str
+    tool_name: str | None
+    input_json: Any
+    output_json: Any
+    input_classification: str
+    output_classification: str
+    payload_expires_at: datetime | None
     created_at: datetime
 
 

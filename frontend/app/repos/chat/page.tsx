@@ -4,7 +4,7 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { CitationCard } from "@/components/chat/CitationCard";
-import { API_BASE_URL, listRepositories } from "@/lib/api";
+import { backendApiUrl, listRepositories } from "@/lib/api";
 import type { CodeCitation, Repository } from "@/lib/types";
 
 type SseEvent =
@@ -72,7 +72,7 @@ export default function MultiRepoChatPage() {
     setIsStreaming(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/repos/chat`, {
+      const response = await fetch(backendApiUrl("/repos/chat"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: trimmed, repo_ids: selectedRepoIds })

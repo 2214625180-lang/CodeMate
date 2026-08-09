@@ -10,14 +10,27 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.agent.verification import TERMINAL_AGENT_RUN_STATUSES
-from app.api.auth import ProductPrincipal, get_product_principal
+from app.api.auth import (
+    EvaluationPrincipal,
+    ProductPrincipal,
+    get_product_principal,
+    require_evaluation_admin,
+)
 from app.core.database import SessionLocal, get_db
 from app.models.agent_run import AgentRun
 from app.models.agent_step import AgentStep
-from app.schemas.runs import AgentRunRead, RunFeedbackRequest, RunFeedbackResponse
+from app.schemas.runs import (
+    AgentRunRead,
+    AgentStepRead,
+    AgentStepRestrictedRead,
+    RunFeedbackRequest,
+    RunFeedbackResponse,
+)
+from app.services.agent_step_service import AgentStepService
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 ProductUser = Annotated[ProductPrincipal, Depends(get_product_principal)]
+AdminPrincipal = Annotated[EvaluationPrincipal, Depends(require_evaluation_admin)]
 
 
 def get_owned_run(
@@ -39,7 +52,35 @@ def get_owned_run(
 
 @router.get("/{run_id}", response_model=AgentRunRead)
 def get_run(run_id: str, principal: ProductUser, db: Session = Depends(get_db)):
-    return get_owned_run(db, run_id, principal.owner_id, include_steps=True)
+    run = get_owned_run(db, run_id, principal.owner_id, include_steps=True)
+    response = AgentRunRead.model_validate(run)
+    steps = AgentStepService(db)
+    response.steps = [
+        AgentStepRead.model_validate(steps.public_dict(step)) for step in run.steps
+    ]
+    return response
+
+
+@router.get("/{run_id}/timeline/restricted", response_model=list[AgentStepRestrictedRead])
+def get_restricted_timeline(
+    run_id: str,
+    _principal: AdminPrincipal,
+    db: Session = Depends(get_db),
+):
+    run = db.get(AgentRun, run_id)
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
+    steps = (
+        db.execute(
+            select(AgentStep)
+            .where(AgentStep.run_id == run_id)
+            .order_by(AgentStep.created_at.asc())
+        )
+        .scalars()
+        .all()
+    )
+    service = AgentStepService(db)
+    return [service.restricted_dict(step) for step in steps]
 
 
 @router.get("/{run_id}/trace")
@@ -144,15 +185,18 @@ def _trace_events(run_id: str, owner_id: str) -> Iterator[str]:
 
 
 def _step_payload(step: AgentStep) -> dict:
+    payload = AgentStepService.public_dict(step)
     return {
-        "id": step.id,
-        "run_id": step.run_id,
-        "type": step.step_type,
-        "tool_name": step.tool_name,
-        "input": step.input_json,
-        "output": step.output_json,
-        "duration_ms": step.duration_ms,
-        "created_at": step.created_at.isoformat(),
+        "id": payload["id"],
+        "run_id": payload["run_id"],
+        "type": payload["step_type"],
+        "tool_name": payload["tool_name"],
+        "input": payload["input_json"],
+        "output": payload["output_json"],
+        "input_classification": payload["input_classification"],
+        "output_classification": payload["output_classification"],
+        "duration_ms": payload["duration_ms"],
+        "created_at": payload["created_at"].isoformat(),
     }
 
 

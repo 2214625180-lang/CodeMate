@@ -107,11 +107,14 @@ export function adminSessionState(cookieValue: string | undefined): AdminSession
   const hasPassword = Boolean(frontendAdminPassword());
   const hasGitHub = Boolean(githubOAuthConfig());
   const authRequired = hasBackendToken || hasPassword || hasGitHub;
+  const hasSessionSecret = Boolean(configuredSessionSecret());
   const rbac = rbacConfig();
   const hasRbacRules = hasAnyRbacRule(rbac);
   const misconfigured = hasBackendToken && !hasPassword && !hasGitHub
     ? true
-    : hasGitHub && !hasRbacRules;
+    : hasGitHub && !hasRbacRules
+      ? true
+      : authRequired && !hasSessionSecret;
 
   if (!authRequired) {
     return {
@@ -137,7 +140,13 @@ export function adminSessionState(cookieValue: string | undefined): AdminSession
       authMode: "misconfigured",
       role: null,
       user: null,
-    detail: misconfigurationDetail(hasBackendToken, hasPassword, hasGitHub, hasRbacRules)
+      detail: misconfigurationDetail(
+        hasBackendToken,
+        hasPassword,
+        hasGitHub,
+        hasRbacRules,
+        hasSessionSecret
+      )
     };
   }
 
@@ -291,13 +300,29 @@ function sign(payload: string): string {
 }
 
 function sessionSecret(): string {
+  const configured = configuredSessionSecret();
+  if (configured) {
+    return configured;
+  }
+  if (
+    !frontendAdminPassword() &&
+    !backendEvaluationApiToken() &&
+    !backendProductApiToken() &&
+    !githubOAuthConfig()
+  ) {
+    return "codemate-local-dev";
+  }
+  throw new Error("FRONTEND_ADMIN_SESSION_SECRET is required for protected authentication");
+}
+
+function configuredSessionSecret(): string {
   return (
     process.env.FRONTEND_ADMIN_SESSION_SECRET ||
     process.env.CODEMATE_FRONTEND_SESSION_SECRET ||
     frontendAdminPassword() ||
     backendEvaluationApiToken() ||
-    "codemate-local-dev"
-  );
+    backendProductApiToken()
+  ).trim();
 }
 
 function parseCsvSet(value: string | undefined): Set<string> {
@@ -336,13 +361,17 @@ function misconfigurationDetail(
   hasBackendToken: boolean,
   hasPassword: boolean,
   hasGitHub: boolean,
-  hasRbacRules: boolean
+  hasRbacRules: boolean,
+  hasSessionSecret: boolean
 ): string {
   if (hasBackendToken && !hasPassword && !hasGitHub) {
     return "Configure GitHub OAuth or FRONTEND_ADMIN_PASSWORD when a CodeMate API token is set.";
   }
   if (hasGitHub && !hasRbacRules) {
     return "Configure at least one CODEMATE_RBAC_* rule before enabling GitHub OAuth.";
+  }
+  if (!hasSessionSecret) {
+    return "Configure FRONTEND_ADMIN_SESSION_SECRET before enabling protected authentication.";
   }
   return "Evaluation authentication is not configured correctly.";
 }

@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-codemate}
       POSTGRES_DB: ${POSTGRES_DB:-codemate}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${CODEMATE_BIND_HOST:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -18,7 +18,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "${CODEMATE_BIND_HOST:-127.0.0.1}:${REDIS_PORT:-6379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -28,8 +28,8 @@ services:
   qdrant:
     image: qdrant/qdrant:v1.9.5
     ports:
-      - "${QDRANT_HTTP_PORT:-6333}:6333"
-      - "${QDRANT_GRPC_PORT:-6334}:6334"
+      - "${CODEMATE_BIND_HOST:-127.0.0.1}:${QDRANT_HTTP_PORT:-6333}:6333"
+      - "${CODEMATE_BIND_HOST:-127.0.0.1}:${QDRANT_GRPC_PORT:-6334}:6334"
     volumes:
       - qdrant_data:/qdrant/storage
 
@@ -213,7 +213,7 @@ services:
       SANDBOX_EXECUTION_BROKER_URL: ${SANDBOX_EXECUTION_BROKER_URL:-}
       SANDBOX_EXECUTION_BROKER_TOKEN: ${SANDBOX_EXECUTION_BROKER_TOKEN:-}
     ports:
-      - "${BACKEND_PORT:-8000}:8000"
+      - "${CODEMATE_BIND_HOST:-127.0.0.1}:${BACKEND_PORT:-8000}:8000"
     volumes:
       - ./backend/app:/app/app
       - ./backend/workspaces:/app/workspaces
@@ -417,7 +417,7 @@ services:
       CODEMATE_RBAC_VIEWER_TEAMS: ${CODEMATE_RBAC_VIEWER_TEAMS:-}
       CODEMATE_RBAC_VIEWER_ORGS: ${CODEMATE_RBAC_VIEWER_ORGS:-}
     ports:
-      - "${FRONTEND_PORT:-3000}:3000"
+      - "${CODEMATE_BIND_HOST:-127.0.0.1}:${FRONTEND_PORT:-3000}:3000"
     volumes:
       - ./artifacts:/app/artifacts
     depends_on:

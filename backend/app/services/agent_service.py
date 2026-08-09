@@ -23,7 +23,6 @@ from app.agent.verification import (
 from app.core.config import settings
 from app.llm import get_llm_provider
 from app.models.agent_run import AgentRun
-from app.models.agent_step import AgentStep
 from app.models.mcp_tool_approval import MCPToolApproval
 from app.models.mcp_tool_execution import MCPToolExecution
 from app.models.mcp_delegated_identity import MCPDelegatedIdentity
@@ -1365,20 +1364,16 @@ class AgentService:
         run.finished_at = datetime.now(timezone.utc)
         run.updated_at = datetime.now(timezone.utc)
         self.db.add(run)
-        self.db.add(
-            AgentStep(
-                run_id=run.id,
-                step_type="final",
-                output_json={
-                    "summary": run.final_summary,
-                    "status": run.status,
-                    "passed": run.status == VERIFIED_SUCCESS,
-                    "verification": run.test_result,
-                },
-                created_at=run.finished_at,
-            )
+        AgentStepService(self.db).record(
+            run_id=run.id,
+            step_type="final",
+            output_json={
+                "summary": run.final_summary,
+                "status": run.status,
+                "passed": run.status == VERIFIED_SUCCESS,
+                "verification": run.test_result,
+            },
         )
-        self.db.commit()
 
     def _finish_infra_error(self, run: AgentRun, reason: str) -> None:
         now = datetime.now(timezone.utc)
@@ -1388,12 +1383,8 @@ class AgentService:
         run.finished_at = now
         run.updated_at = now
         self.db.add(run)
-        self.db.add(
-            AgentStep(
-                run_id=run.id,
-                step_type="error",
-                output_json={"message": reason},
-                created_at=now,
-            )
+        AgentStepService(self.db).record(
+            run_id=run.id,
+            step_type="error",
+            output_json={"message": reason},
         )
-        self.db.commit()
