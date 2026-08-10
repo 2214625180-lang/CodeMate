@@ -28,6 +28,13 @@ def index_repository_job(repo_id: str, full: bool = False) -> None:
 
 
 def run_agent_job(run_id: str) -> None:
+    """Provide one per-job, session-scoped adapter from RQ into AgentService.
+
+    Retry and resume semantics belong to the durable run/checkpoint layer, so an
+    RQ retry creates a fresh SQLAlchemy session instead of reusing failed process
+    state from the previous attempt. The lower layers commit multiple lifecycle
+    transitions; one Agent run is intentionally not a single database transaction.
+    """
     db = SessionLocal()
     try:
         AgentService(db).run_fix(run_id)

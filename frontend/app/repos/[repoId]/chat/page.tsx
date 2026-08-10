@@ -129,6 +129,9 @@ async function readSse(
   body: ReadableStream<Uint8Array>,
   onMessage: (message: SseEvent) => void
 ) {
+  // POST chat carries a JSON body, so native EventSource is unsuitable. Parse
+  // fetch incrementally and retain partial frames because network chunks do not
+  // align with SSE message boundaries.
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -159,6 +162,8 @@ async function readSse(
 }
 
 function parseSseEvent(raw: string): SseEvent | null {
+  // ChatService deliberately emits one JSON `data:` line per frame. If the
+  // backend starts using multiline SSE data fields, this parser must evolve too.
   const eventLine = raw.split("\n").find((line) => line.startsWith("event:"));
   const dataLine = raw.split("\n").find((line) => line.startsWith("data:"));
   if (!eventLine || !dataLine) {

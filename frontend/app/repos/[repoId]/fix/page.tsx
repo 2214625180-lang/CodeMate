@@ -23,6 +23,8 @@ import type {
   TraceEventType
 } from "@/lib/types";
 
+// Keep this subscription list aligned with runs.py::_trace_events. Unknown or
+// newly added backend event types are otherwise persisted but invisible here.
 const TRACE_EVENTS: TraceEventType[] = [
   "inspection",
   "agent_plan",
@@ -47,6 +49,9 @@ const TRACE_EVENTS: TraceEventType[] = [
   "error"
 ];
 
+// These are the backend statuses that unlock a new submission after a REST
+// refresh. Terminal final/error trace events also end the live UI phase, while
+// waiting_approval and waiting_reconciliation remain resumable states.
 const TERMINAL_RUN_STATUSES = new Set([
   "verified_success",
   "unverified_patch",
@@ -79,6 +84,9 @@ export default function RepoFixPage() {
   >({});
   const [reconcilingExecutionId, setReconcilingExecutionId] = useState<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+  // Network responses may arrive after the user opens or creates another run.
+  // This active-run identity guard prevents callbacks for an older run from
+  // overwriting the timeline and verdict of the currently active run.
   const activeRunIdRef = useRef<string | null>(null);
   const loadedUrlRunIdRef = useRef<string | null>(null);
 
@@ -101,6 +109,7 @@ export default function RepoFixPage() {
   const refreshRun = useCallback(async (nextRunId: string) => {
     try {
       const data = await getRun(nextRunId);
+      // Ignore a REST response that completed after the user switched runs.
       if (activeRunIdRef.current !== nextRunId) {
         return;
       }
@@ -130,6 +139,8 @@ export default function RepoFixPage() {
           }
           const event = JSON.parse((message as MessageEvent).data) as TraceEvent;
           setEvents((current) => {
+            // Opening a new trace connection replays persisted steps; event IDs
+            // make that replay idempotent independently of delivery order.
             if (current.some((item) => item.id === event.id)) {
               return current;
             }
@@ -169,6 +180,8 @@ export default function RepoFixPage() {
         if (activeRunIdRef.current !== nextRunId) {
           return;
         }
+        // A transport failure is not an Agent verdict. Re-read durable state and
+        // keep submissions locked unless the backend reports a terminal status.
         void refreshRun(nextRunId);
       };
     },
@@ -225,6 +238,8 @@ export default function RepoFixPage() {
       loadedUrlRunIdRef.current = response.run_id;
       activeRunIdRef.current = response.run_id;
       setRunId(response.run_id);
+      // Publish the new active ID before changing the URL. Otherwise the old
+      // runId effect can race this submission and restore the previous run.
       router.replace(
         `/repos/${encodeURIComponent(repoId)}/fix?runId=${encodeURIComponent(response.run_id)}`,
         { scroll: false }
@@ -386,6 +401,8 @@ export default function RepoFixPage() {
         <div className="space-y-4">
           <section>
             <h2 className="mb-3 text-lg font-semibold text-slate-950">Diff</h2>
+            {/* Prefer a non-empty persisted final diff; otherwise retain the
+                latest streamed patch so the attempted change remains visible. */}
             <DiffViewer diff={run?.final_diff || latestPatch} />
           </section>
           <section>

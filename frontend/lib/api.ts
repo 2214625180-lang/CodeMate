@@ -67,6 +67,9 @@ export function backendApiUrl(path: string): string {
   if (!path.startsWith("/")) {
     throw new Error("Backend API paths must start with '/'");
   }
+  // Keep product traffic same-origin. The server-side proxy owns backend
+  // credentials and converts the HttpOnly session into a signed identity, so
+  // neither tokens nor trusted owner headers enter the browser bundle.
   return `/api/backend${path}`;
 }
 

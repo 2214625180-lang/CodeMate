@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 FROM docker:29.2.1-cli AS docker-cli
 
 FROM python:3.11-slim
@@ -14,7 +16,8 @@ RUN apt-get update \
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN --mount=type=cache,id=codemate-backend-pip,target=/root/.cache/pip,sharing=locked \
+    python -m pip install -r requirements.txt
 
 COPY app ./app
 COPY alembic.ini ./alembic.ini

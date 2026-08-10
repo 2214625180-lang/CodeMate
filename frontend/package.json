@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "bash ../scripts/run_frontend_e2e.sh"
+    "test:e2e": "bash ../scripts/run_frontend_e2e.sh",
+    "test:e2e:protected": "bash ../scripts/run_frontend_protected_e2e.sh"
   },
   "dependencies": {
     "next": "15.5.22",

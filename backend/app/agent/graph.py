@@ -1,3 +1,11 @@
+"""Deterministic repair lifecycle wrapped around the adaptive tool loop.
+
+The model chooses investigative actions inside PlanNextAction/ExecuteLocalAction.
+Reproduction, patch application, verification and repair iterations stay under
+explicit system transitions. The planner may finish early, but cannot skip those
+stages and declare a verified repair.
+"""
+
 from app.agent.state import FixAgentState
 from app.agent.verification import (
     route_after_regression_checks,
@@ -58,6 +66,7 @@ def graph_entry(state: FixAgentState) -> str:
 
 
 def build_fix_graph(nodes: dict, *, checkpointer=None):
+    """Compile the repair graph with an optional durable LangGraph checkpointer."""
     from langgraph.graph import END, StateGraph
 
     graph = StateGraph(FixAgentState)
@@ -104,6 +113,9 @@ def build_fix_graph(nodes: dict, *, checkpointer=None):
             "generate": "GeneratePatch",
         },
     )
+    # Approval and reconciliation deliberately end this invocation. Their saved
+    # state is resumed by a later worker job through graph_entry, not by keeping
+    # an RQ worker blocked while a human or remote tool is pending.
     graph.add_edge("PauseForApproval", END)
     graph.add_conditional_edges(
         "CallMCPTools",

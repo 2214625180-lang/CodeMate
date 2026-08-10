@@ -142,9 +142,13 @@ function bodyFor(
     action: "confirm_succeeded" | "confirm_failed" | "retry"
   ) => void
 ) {
+  // Timeline payloads are sanitized observable actions/evidence, not hidden
+  // model reasoning. Event type selects presentation but grants no authority.
   if (event.type === "approval_required") {
     const original = readApproval(event.output);
     if (original) {
+      // Keep the immutable event while overlaying the latest mutable state
+      // returned by approval/reconciliation APIs.
       const approval = approvalOverrides[original.id] ?? original;
       return (
         <ApprovalCard

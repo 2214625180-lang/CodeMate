@@ -147,6 +147,11 @@ class OpenAICompatibleLLMProvider(BaseLLMProvider):
         issue: str,
         context: dict[str, Any],
     ) -> tuple[PlanNextAction, int]:
+        """Ask the model for one proposal; execution authority stays elsewhere.
+
+        Provider-side validation gives an early, useful error. LocalAgentExecutor
+        validates the same union again because it is the trusted tool boundary.
+        """
         schema = plan_next_action_json_schema()
         planner_context = self._truncate_planner_context(context)
         messages = [
@@ -177,6 +182,8 @@ class OpenAICompatibleLLMProvider(BaseLLMProvider):
             },
         ]
         remaining_budgets = context.get("remaining_budgets") or {}
+        # Reject an oversized prompt before the request: accounting only after
+        # completion would let a single planner call exceed the run budget.
         remaining_tokens = max(0, int(remaining_budgets.get("planner_tokens") or 0))
         estimated_input_tokens = max(
             1,
@@ -510,6 +517,9 @@ class OpenAICompatibleLLMProvider(BaseLLMProvider):
             return str(message.get("content") or ""), token_usage
 
     def _truncate_planner_context(self, context: dict[str, Any]) -> dict[str, Any]:
+        # Search results contribute locations and symbols only. Source text enters
+        # file_context through an explicit ReadFile action, preserving an auditable
+        # boundary between discovering a candidate and authorizing patch context.
         bounded: dict[str, Any] = {
             "repo_id": context.get("repo_id"),
             "repo_memory": self._truncate_repo_memory(context.get("repo_memory")),

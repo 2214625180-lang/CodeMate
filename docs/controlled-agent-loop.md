@@ -23,6 +23,8 @@ Inspect Repository
 - `ListFiles(pattern)`
 - `FindSymbol(symbol)`
 - `FindReferences(symbol)`
+- `GetImportGraph(path, direction, depth)`
+- `GetCallGraph(symbol, direction, depth)`
 - `RunTests(command)`
 - `GeneratePatch()`
 - `Finish(reason)`

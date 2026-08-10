@@ -76,6 +76,8 @@ function VerdictBadge({ value }: { value: string }) {
 }
 
 function evidenceOutcome(evidence: TestEvidence) {
+  // Never infer success from `passed` alone. The phase must have actually run
+  // and exited cleanly; skips and infrastructure failures stay explicit.
   if (evidence.tests_ran === true && evidence.exit_code === 0 && evidence.passed === true) {
     return "passed";
   }

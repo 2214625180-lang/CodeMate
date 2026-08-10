@@ -6,7 +6,12 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
 
 class AgentAction(BaseModel):
-    """Shared, strictly validated fields emitted by the local action planner."""
+    """Shared, strictly validated fields emitted by the local action planner.
+
+    The model proposes intent; it never receives an untyped escape hatch for a
+    shell command or filesystem operation. ``extra='forbid'`` makes prompt or
+    provider drift fail closed before any tool is dispatched.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
 
@@ -87,6 +92,9 @@ class Finish(AgentAction):
     reason: str = Field(min_length=1, max_length=2_000)
 
 
+# The discriminator turns model output into one of a finite set of capabilities.
+# Adding a tool therefore requires an explicit schema, executor branch and test;
+# merely mentioning a new action name in a prompt cannot grant permission.
 PlanNextAction = Annotated[
     SearchCode
     | ReadFile
@@ -115,7 +123,11 @@ LOCAL_TOOL_ACTIONS = (
 
 
 def action_fingerprint(action: PlanNextAction) -> str:
-    """Fingerprint execution-relevant arguments, excluding mutable reasoning text."""
+    """Fingerprint execution arguments while excluding mutable reasoning text.
+
+    A model can rephrase its hypothesis or rationale without turning the same
+    search/read/test request into a new action and bypassing loop detection.
+    """
 
     payload = action.model_dump(exclude={"hypothesis", "rationale"}, mode="json")
     serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))

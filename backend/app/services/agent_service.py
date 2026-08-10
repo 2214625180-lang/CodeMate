@@ -44,6 +44,14 @@ from app.services.agent_step_service import AgentStepService
 
 
 class AgentService:
+    """Own the durable lifecycle of one repair run.
+
+    API and worker layers delegate here so status transitions, graph recovery,
+    workspace isolation and terminal verification share one orchestration path.
+    Individual graph nodes return partial ``FixAgentState`` updates; they do not
+    write a successful business result directly.
+    """
+
     def __init__(self, db: Session):
         self.db = db
         self.sandbox = SandboxService()
@@ -59,6 +67,12 @@ class AgentService:
         delegated_identity_id: str | None = None,
         delegation_token: str | None = None,
     ) -> AgentRun:
+        """Persist an authorized request before asynchronous execution begins.
+
+        Queue submission intentionally lives in the API/service caller.  A worker
+        therefore receives only a committed run ID and can always recover the
+        complete request, owner and optional delegated identity from the database.
+        """
         repository = self.db.get(Repository, repo_id)
         if repository is None or repository.owner_id != owner_id:
             raise ValueError("Repository not found")
@@ -97,6 +111,7 @@ class AgentService:
         return run
 
     def run_fix(self, run_id: str) -> None:
+        """Retry-safe RQ entry point for starting or resuming a repair graph."""
         run = self.db.get(AgentRun, run_id)
         if run is None:
             return
@@ -412,6 +427,12 @@ class AgentService:
         }
 
     def _invoke_fix_graph(self, run: AgentRun, state: FixAgentState) -> FixAgentState:
+        """Run or resume the graph inside a newly created ephemeral workspace.
+
+        Checkpoints persist logical state, not filesystem mutations. Recovery
+        rebuilds the workspace from the indexed repository and reapplies a saved
+        patch only when the next graph node requires that patched state.
+        """
         repository = self.db.get(Repository, run.repo_id)
         if repository is None or repository.local_path is None:
             raise RuntimeError("Repository workspace is not available.")
@@ -440,6 +461,7 @@ class AgentService:
                 self._nodes(run, tools, steps),
                 checkpointer=checkpointer,
             )
+            # One AgentRun maps to one LangGraph thread across all RQ retries.
             graph_config = {
                 "configurable": {
                     "thread_id": run.id,
@@ -483,6 +505,8 @@ class AgentService:
                     input_json={"next_nodes": list(snapshot.next)},
                     output_json={"checkpoint_restored": True},
                 )
+                # None tells LangGraph to continue from snapshot.next instead of
+                # replaying completed planner/tool nodes with the initial state.
                 return graph.invoke(None, config=graph_config)
             return graph.invoke(state, config=graph_config)
         finally:
@@ -507,6 +531,8 @@ class AgentService:
             }
 
         def reproduce_failure(state: FixAgentState) -> FixAgentState:
+            # Baseline execution must happen before any generated patch. Without
+            # an observed failure the graph cannot attribute a later pass to it.
             baseline_result = tools.run_tests(
                 state.get("resolved_test_command"),
                 phase="baseline",
@@ -555,6 +581,7 @@ class AgentService:
                             "AGENT_PLANNER_MODE must be either 'adaptive' or 'fixed'"
                         )
                 except Exception as exc:  # noqa: BLE001 - invalid plans fail closed.
+                    # Never guess a tool from malformed or failed model output.
                     action = Finish(
                         action="Finish",
                         hypothesis="The planner did not produce a valid structured action.",
@@ -667,6 +694,9 @@ class AgentService:
             approval_event: dict | None = None
             approval_requests = list(plan.get("approval_requests") or [])
             if approval_requests and settings.mcp_approval_enabled:
+                # Persist exactly one actionable approval for this checkpoint.
+                # Other approval and automatic calls are marked deferred; after
+                # resume the Planner may reconsider them if round/call budget remains.
                 requested_call = approval_requests[0]
                 catalog_entry = next(
                     (
@@ -817,6 +847,9 @@ class AgentService:
                     "mcp_pending_execution_id": None,
                     "resume_from": "mcp_call",
                 }
+                # Persist a cursor and stable idempotency key before crossing the
+                # network boundary. If the remote outcome is unknown, recovery
+                # reconciles this execution instead of blindly issuing it again.
                 execution = executions.prepare(
                     run_id=run.id,
                     call=call,
@@ -926,6 +959,8 @@ class AgentService:
             }
 
         def generate_patch(state: FixAgentState) -> FixAgentState:
+            # Prefer the last post-patch verification failure over diagnostic
+            # and baseline evidence; it is most specific to the candidate diff.
             previous_result = (
                 state.get("regression_test_result")
                 or state.get("targeted_test_result")
@@ -940,6 +975,8 @@ class AgentService:
                 previous_failure=previous_result.get("stderr"),
             )
             llm_usage = self.llm.consume_llm_usage()
+            # Replaying the exact diff after reflection is a stalled loop, not a
+            # new repair attempt, so it is rejected before patch application.
             patch_fingerprint = hashlib.sha256(patch.encode("utf-8")).hexdigest()
             previous_fingerprints = list(state.get("patch_fingerprints") or [])
             patch_is_duplicate = patch_fingerprint in previous_fingerprints
@@ -981,6 +1018,9 @@ class AgentService:
             return {"apply_result": tools.apply_patch(state.get("patch", ""))}
 
         def targeted_tests(state: FixAgentState) -> FixAgentState:
+            # Targeted evidence addresses the reported issue. Regression prefers
+            # the independently detected repository command and falls back to the
+            # target command; both phases still run when the commands are identical.
             apply_result = state.get("apply_result") or {}
             if not apply_result.get("ok"):
                 test_result = {
@@ -1029,6 +1069,9 @@ class AgentService:
             }
 
         def reflect(state: FixAgentState) -> FixAgentState:
+            # Reflection is evidence bookkeeping, not hidden model reasoning. The
+            # failed result is retained, then only this run's temporary workspace
+            # is reset so the next patch is never stacked on a failed attempt.
             failed_result = (
                 state.get("regression_test_result")
                 or state.get("targeted_test_result")
@@ -1087,6 +1130,8 @@ class AgentService:
             }
 
         def final_answer(state: FixAgentState) -> FixAgentState:
+            # The final node derives its verdict from raw phase evidence; planner
+            # Finish reasons and generated summaries have no success authority.
             diff = tools.git_diff()
             verification_result = build_verification_result(state)
             status = verification_result["status"]
@@ -1322,6 +1367,9 @@ class AgentService:
             "Reflect",
             "FinalAnswer",
         }
+        # Do not contaminate earlier investigation nodes with a saved patch. It is
+        # replayed only when the checkpoint proves application succeeded and the
+        # pending node assumes patched files.
         if not patch or not apply_result.get("ok") or not (next_nodes & nodes_requiring_applied_patch):
             return
         restored = self.sandbox.apply_patch(workspace=workspace, diff=patch)
@@ -1336,6 +1384,8 @@ class AgentService:
         if run is None:
             return
 
+        # Revalidate verified evidence at the database boundary. A malformed or
+        # incompatible checkpoint must fail closed instead of persisting success.
         requested_status = state.get("status")
         verification_result = state.get("verification_result") or state.get("test_result")
         verified_evidence_is_valid = requested_status != VERIFIED_SUCCESS or (

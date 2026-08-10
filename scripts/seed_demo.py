@@ -262,10 +262,11 @@ def upsert_fix_dataset(
         return dataset
 
 
-def start_agent_run(manifest: dict[str, Any]) -> str:
+def start_agent_run(manifest: dict[str, Any], *, owner_id: str) -> str:
     with SessionLocal() as database:
         run = AgentService(database).create_fix_run(
             repo_id=manifest["repo_id"],
+            owner_id=owner_id,
             issue=manifest["issue"],
             test_command=manifest["target_test_command"],
         )
@@ -322,7 +323,11 @@ def main() -> int:
         llm_provider=llm_provider,
         llm_model=llm_model,
     )
-    run_id = start_agent_run(manifest) if args.start_run else None
+    run_id = (
+        start_agent_run(manifest, owner_id=repository.owner_id)
+        if args.start_run
+        else None
+    )
     result = build_result(
         manifest=manifest,
         commit_sha=commit_sha,

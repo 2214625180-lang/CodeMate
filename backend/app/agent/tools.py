@@ -13,6 +13,13 @@ from app.services.retrieval_service import RetrievalService
 
 
 class AgentTools:
+    """Observable capability layer available to the local Agent executor.
+
+    Every operation is scoped to one repository or ephemeral run workspace and
+    recorded through AgentStepService. Planner/provider code must not bypass
+    this layer to reach the database, filesystem or sandbox directly.
+    """
+
     GRAPH_MAX_NODES = 80
     GRAPH_MAX_EDGES = 120
     STATIC_NAVIGATION_LANGUAGES = ("python", "javascript", "typescript", "vue")

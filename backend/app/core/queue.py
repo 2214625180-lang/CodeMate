@@ -35,6 +35,8 @@ def enqueue_repository_index(repo_id: str, *, full: bool = False) -> str:
 
 
 def enqueue_agent_run(run_id: str) -> str:
+    # Retrying the orchestration job is safe because AgentService short-circuits
+    # terminal runs and resumes non-terminal work from the persisted checkpoint.
     job = get_index_queue().enqueue(
         run_agent_job,
         run_id,

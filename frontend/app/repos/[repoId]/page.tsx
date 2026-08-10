@@ -55,6 +55,8 @@ export default function RepoDetailPage() {
   }, [repoId]);
 
   const loadInsights = useCallback(async () => {
+    // Memory and CI are independent projections of an indexed repository. One
+    // failed endpoint should not discard the other endpoint's usable result.
     const [memoryResult, ciResult] = await Promise.allSettled([
       getRepoMemory(repoId),
       inspectCI(repoId)
@@ -79,6 +81,8 @@ export default function RepoDetailPage() {
   }, [repoId]);
 
   useEffect(() => {
+    // Status polling owns indexing progress. Insights are fetched by the next
+    // effect only after both the status and indexed_at prove an index exists.
     void loadRepository();
     const interval = window.setInterval(() => {
       void loadRepository();

@@ -26,6 +26,7 @@ Reproduce failure
 cp .env.example .env
 
 # 在 .env 中配置真实 LLM_PROVIDER、LLM_MODEL 和对应凭据
+# 若 Docker socket 不在 /var/run/docker.sock，再设置 CODEMATE_DOCKER_SOCKET
 make demo
 ```
 
@@ -90,23 +91,31 @@ flowchart LR
 
 ```bash
 cp .env.example .env
+# 在 .env 中设置 MCP_REGISTRY_ENABLED=false；若启用 Registry，
+# MCP_REGISTRY_MASTER_KEY 必须使用至少 32 个字符的开发密钥
 docker compose up --build
 ```
 
-默认只把服务端口绑定到 `127.0.0.1`。只有在可信局域网演示且理解开发凭据风险时，才显式设置 `CODEMATE_BIND_HOST=0.0.0.0`。
+默认只把服务端口绑定到 `127.0.0.1`。只有在可信局域网演示且理解开发凭据风险时，才显式设置 `CODEMATE_BIND_HOST=0.0.0.0`。基础 Compose 没有给 Worker 挂载 Docker socket，也没有默认配置远端执行 Broker，因此适合 UI、索引和 Mock smoke，不能完成 Fix 沙箱验证；需要本地 Fix 演示时使用明确标注为仅限开发的 Demo overlay。
+
+用户隔离与签名代理的 Alice/Bob 受保护模式回归可通过 `npm --prefix frontend run test:e2e:protected` 运行；该套件会启用产品 Token、Redis nonce 防重放并使用独立的临时 Compose 数据卷。
 
 常用验证命令：
 
 ```bash
-cd backend && ../.venv/bin/python -m pytest -q
-cd frontend && npm run typecheck && npm run lint && npm run build
-python scripts/benchmark_suite.py
+DATABASE_MIGRATIONS_ENABLED=false .venv/bin/python -m pytest -q backend/tests
+npm --prefix frontend run typecheck
+npm --prefix frontend run lint
+npm --prefix frontend run build
+PYTHONDONTWRITEBYTECODE=1 PATH="$PWD/.venv/bin:$PATH" \
+  .venv/bin/python scripts/benchmark_suite.py
 ```
 
 ## 文档导航
 
 ### 主产品
 
+- [代码阅读与 Agent 项目学习指南](docs/code-reading-and-agent-learning-guide.md)
 - [Demo 脚本：真实模型、多文件 fixture 与讲解顺序](docs/demo-script.md)
 - [受控 Agent Loop、工具契约与 Checkpoint](docs/controlled-agent-loop.md)
 - [技术难点与取舍](docs/technical-challenges-tradeoffs.md)

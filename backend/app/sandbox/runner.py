@@ -15,6 +15,12 @@ from app.core.telemetry import operation_span, record_span_usage
 
 @dataclass(slots=True)
 class TestResult:
+    """Normalized execution evidence returned by every sandbox backend.
+
+    ``passed`` is treated as an untrusted report until it agrees with
+    ``tests_ran``, the exit code and infrastructure metadata.
+    """
+
     passed: bool
     exit_code: int
     stdout: str
@@ -27,7 +33,8 @@ class TestResult:
     failure_kind: Literal["test_failure", "skipped", "infrastructure"] | None = None
 
     def __post_init__(self) -> None:
-        # `passed` is derived from execution evidence, even for remote broker responses.
+        # Derive `passed` from evidence even for remote broker responses.  This
+        # prevents a skipped dependency install or timeout from becoming success.
         self.passed = bool(
             self.tests_ran
             and self.exit_code == 0
@@ -124,6 +131,9 @@ class SandboxService:
             return {"ok": False, "stdout": result.stdout, "stderr": inventory_error, "exit_code": 1}
         added_paths = sorted(untracked_after - untracked_before)
         if added_paths:
+            # Plain `git diff` omits untracked files. Intent-to-add makes a newly
+            # generated file visible in the final diff without staging content or
+            # touching the indexed source repository outside this workspace.
             intent_result = subprocess.run(
                 ["git", "-C", str(workspace), "add", "--intent-to-add", "--", *added_paths],
                 capture_output=True,
@@ -243,6 +253,8 @@ class SandboxService:
                 failure_kind="skipped",
             )
 
+        # _test_shell_command eventually uses a shell, so safety depends on this
+        # exact allowlist check happening again at the final execution boundary.
         if command not in settings.allowed_test_commands:
             return TestResult(
                 passed=False,
@@ -509,7 +521,8 @@ class SandboxService:
     ) -> TestResult:
         stdout_text = self._output_text(stdout)
         stderr_text = self._output_text(stderr)
-        # Dependency setup is wrapped to exit 125 before the test command starts.
+        # Dependency setup is wrapped to exit 125 before the test command starts;
+        # this is infrastructure evidence, not a failed or successful test run.
         tests_ran = not timed_out and exit_code != 125
         return TestResult(
             passed=reported_passed,

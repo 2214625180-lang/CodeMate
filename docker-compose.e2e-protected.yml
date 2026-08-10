@@ -1,0 +1,10 @@
+services:
+  backend:
+    environment:
+      PRODUCT_API_TOKEN: ${CODEMATE_E2E_PRODUCT_API_TOKEN:-codemate-e2e-product-token-not-for-production}
+      CODEMATE_PRODUCT_IDENTITY_SECRET: ${CODEMATE_E2E_PRODUCT_IDENTITY_SECRET:-codemate-e2e-product-identity-not-for-production}
+      CODEMATE_REQUIRE_SIGNED_BROWSER_IDENTITY: "true"
+      CODEMATE_PROXY_IDENTITY_NONCE_STORE: redis
+
+  e2e-seed:
+    command: ["python", "/e2e/seed_protected_product.py"]

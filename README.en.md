@@ -26,6 +26,7 @@ The homepage includes a pausable 36-second guided replay based on the checked-in
 cp .env.example .env
 
 # Configure a real LLM_PROVIDER, LLM_MODEL, and credential in .env
+# Set CODEMATE_DOCKER_SOCKET when the socket is not /var/run/docker.sock
 make demo
 ```
 
@@ -90,23 +91,31 @@ For regular local development, use the deterministic Mock configuration:
 
 ```bash
 cp .env.example .env
+# Set MCP_REGISTRY_ENABLED=false in .env. When Registry is enabled,
+# MCP_REGISTRY_MASTER_KEY must be a development key of at least 32 characters.
 docker compose up --build
 ```
 
-Published service ports bind to `127.0.0.1` by default. Set `CODEMATE_BIND_HOST=0.0.0.0` only for a trusted LAN demo after accounting for the development credentials.
+Published service ports bind to `127.0.0.1` by default. Set `CODEMATE_BIND_HOST=0.0.0.0` only for a trusted LAN demo after accounting for the development credentials. The base Compose stack neither mounts a Docker socket into the worker nor configures a remote execution broker, so it supports the UI, indexing, and Mock smoke paths but not Fix sandbox verification. Use the explicitly development-only demo overlay for a local Fix demonstration.
+
+Run `npm --prefix frontend run test:e2e:protected` for the Alice/Bob user-isolation and signed-proxy regression. The suite enables the product token, Redis-backed nonce replay protection, and isolated temporary Compose volumes.
 
 Common verification commands:
 
 ```bash
-cd backend && ../.venv/bin/python -m pytest -q
-cd frontend && npm run typecheck && npm run lint && npm run build
-python scripts/benchmark_suite.py
+DATABASE_MIGRATIONS_ENABLED=false .venv/bin/python -m pytest -q backend/tests
+npm --prefix frontend run typecheck
+npm --prefix frontend run lint
+npm --prefix frontend run build
+PYTHONDONTWRITEBYTECODE=1 PATH="$PWD/.venv/bin:$PATH" \
+  .venv/bin/python scripts/benchmark_suite.py
 ```
 
 ## Documentation
 
 ### Core product
 
+- [Code-reading and Agent learning guide (Chinese)](docs/code-reading-and-agent-learning-guide.md)
 - [Demo script: real model, multi-file fixture, and presentation flow](docs/demo-script.md)
 - [Controlled Agent Loop, tool contract, and checkpoints](docs/controlled-agent-loop.md)
 - [Technical challenges and tradeoffs](docs/technical-challenges-tradeoffs.md)

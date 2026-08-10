@@ -36,6 +36,13 @@ class ScannedCodeFile:
 
 
 class IndexService:
+    """Keep checkout, relational metadata and Qdrant vectors logically consistent.
+
+    These stores cannot share one transaction.  Indexing therefore builds a
+    staging checkout, tracks newly written vector IDs and uses compensating
+    cleanup/restore steps when any later operation fails.
+    """
+
     def __init__(self, db: Session):
         self.db = db
         self.embedding_provider = get_embedding_provider()
@@ -81,6 +88,8 @@ class IndexService:
             self._update_repository(repository, status="embedding")
 
             self.vector_store.ensure_collection(self.embedding_provider.dimension)
+            # Keep old vector IDs until the database commit succeeds. If writing
+            # the replacement fails, only the newly created points are removed.
             old_point_ids = self._chunk_point_ids(repository.id)
             self.db.execute(delete(CodeChunk).where(CodeChunk.repo_id == repository.id))
             self.db.execute(delete(CodeFile).where(CodeFile.repo_id == repository.id))
@@ -113,6 +122,7 @@ class IndexService:
                 self._remove_path_best_effort(staging_workspace)
             raise
 
+        # Retire old external state only after the new DB view is committed.
         self._remove_path_best_effort(backup_workspace)
         self._delete_vector_points_best_effort(old_point_ids)
         self._refresh_memory(repository.id)

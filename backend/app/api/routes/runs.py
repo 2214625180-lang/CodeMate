@@ -121,6 +121,11 @@ def submit_run_feedback(
 
 
 def _trace_events(run_id: str, owner_id: str) -> Iterator[str]:
+    """Poll persisted steps and expose each public event once per SSE connection.
+
+    Ownership is rechecked on every poll, not only when the stream is opened, so
+    a long-lived connection never bypasses the same isolation rule as GET /runs.
+    """
     sent_ids: set[str] = set()
     allowed_events = {
         "inspection",
