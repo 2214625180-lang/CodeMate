@@ -61,6 +61,12 @@ async def lifespan(_app: FastAPI):
             enqueue_security_audit_delivery(delay_seconds=2, recurring=True)
         except Exception:  # noqa: BLE001 - durable outbox can be drained manually.
             pass
+    try:
+        from app.core.queue import enqueue_agent_timeline_payload_cleanup
+
+        enqueue_agent_timeline_payload_cleanup(delay_seconds=5, recurring=True)
+    except Exception:  # noqa: BLE001 - API traffic also purges expired payloads.
+        pass
     if settings.mcp_compliance_enabled:
         try:
             from app.core.queue import enqueue_mcp_compliance_scan

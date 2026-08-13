@@ -186,6 +186,34 @@ def test_fix_metrics_come_from_verification_evidence() -> None:
     assert metrics["p95_latency_sec"] == pytest.approx(0.86)
 
 
+def test_agent_tool_counts_use_actual_calls_without_double_counting_observations() -> None:
+    steps = [
+        SimpleNamespace(
+            step_type="agent_observation",
+            tool_name="SearchCode",
+            output_json={},
+        ),
+        SimpleNamespace(step_type="tool_call", tool_name="search_code", output_json={}),
+        SimpleNamespace(step_type="tool_call", tool_name="get_import_graph", output_json={}),
+        SimpleNamespace(step_type="tool_call", tool_name="docs.lookup", output_json={}),
+    ]
+    run = SimpleNamespace(
+        id="run-tools",
+        status="verified_success",
+        final_summary="fixed",
+        iterations=1,
+        steps=steps,
+        test_result={},
+        final_diff="diff",
+    )
+
+    result = EvaluationService(None)._agent_result_json(run)  # type: ignore[arg-type]
+
+    assert result["tool_calls"] == 3
+    assert result["local_tool_calls"] == 2
+    assert result["mcp_tool_calls"] == 1
+
+
 def test_fix_diff_rejects_changes_outside_case_allowlist() -> None:
     service = EvaluationService(None)  # type: ignore[arg-type]
     source_only = """diff --git a/src/cart.py b/src/cart.py

@@ -80,7 +80,7 @@ class SandboxService:
         if destination.exists():
             shutil.rmtree(destination)
 
-        shutil.copytree(source_path, destination, ignore=self._ignore)
+        shutil.copytree(source_path, destination, symlinks=True, ignore=self._ignore)
         return destination
 
     def cleanup_workspace(self, workspace: Path) -> None:
@@ -97,6 +97,10 @@ class SandboxService:
         if not diff.strip():
             return {"ok": False, "stdout": "", "stderr": "Empty patch"}
 
+        untracked_before, inventory_error = self._untracked_paths(workspace)
+        if inventory_error:
+            return {"ok": False, "stdout": "", "stderr": inventory_error, "exit_code": 1}
+
         patch_file = workspace / ".codemate.patch"
         patch_file.write_text(diff, encoding="utf-8")
         result = subprocess.run(
@@ -107,12 +111,53 @@ class SandboxService:
             check=False,
         )
         patch_file.unlink(missing_ok=True)
+        if result.returncode != 0:
+            return {
+                "ok": False,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "exit_code": result.returncode,
+            }
+
+        untracked_after, inventory_error = self._untracked_paths(workspace)
+        if inventory_error:
+            return {"ok": False, "stdout": result.stdout, "stderr": inventory_error, "exit_code": 1}
+        added_paths = sorted(untracked_after - untracked_before)
+        if added_paths:
+            intent_result = subprocess.run(
+                ["git", "-C", str(workspace), "add", "--intent-to-add", "--", *added_paths],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            if intent_result.returncode != 0:
+                return {
+                    "ok": False,
+                    "stdout": result.stdout + intent_result.stdout,
+                    "stderr": result.stderr + intent_result.stderr,
+                    "exit_code": intent_result.returncode,
+                }
         return {
-            "ok": result.returncode == 0,
+            "ok": True,
             "stdout": result.stdout,
             "stderr": result.stderr,
-            "exit_code": result.returncode,
+            "exit_code": 0,
         }
+
+    def _untracked_paths(self, workspace: Path) -> tuple[set[str], str | None]:
+        result = subprocess.run(
+            ["git", "-C", str(workspace), "ls-files", "--others", "-z"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
+            timeout=30,
+            check=False,
+        )
+        if result.returncode != 0:
+            return set(), result.stderr or "Failed to inspect untracked sandbox files"
+        return {path for path in result.stdout.split("\0") if path}, None
 
     def git_diff(self, *, workspace: Path) -> str:
         return self._trace_sandbox_operation(
@@ -122,7 +167,7 @@ class SandboxService:
 
     def _git_diff(self, *, workspace: Path) -> str:
         result = subprocess.run(
-            ["git", "-C", str(workspace), "diff", "--no-ext-diff"],
+            ["git", "-C", str(workspace), "diff", "--binary", "--no-ext-diff"],
             capture_output=True,
             text=True,
             timeout=30,
@@ -486,7 +531,7 @@ class SandboxService:
     def _list_files(self, *, workspace: Path, pattern: str | None = None) -> list[str]:
         files: list[str] = []
         for path in workspace.rglob("*"):
-            if not path.is_file() or ".git" in path.parts:
+            if path.is_symlink() or not path.is_file() or ".git" in path.parts:
                 continue
             relative = path.relative_to(workspace).as_posix()
             if pattern and not fnmatch.fnmatch(relative, pattern):
@@ -521,7 +566,19 @@ class SandboxService:
         end_line: int | None = None,
     ) -> dict:
         root = workspace.resolve()
-        absolute_path = (root / file_path).resolve()
+        requested_path = Path(file_path)
+        if requested_path.is_absolute() or ".." in requested_path.parts:
+            raise PermissionError("Invalid file path")
+
+        candidate = root
+        for part in requested_path.parts:
+            if part in {"", "."}:
+                continue
+            candidate /= part
+            if candidate.is_symlink():
+                raise PermissionError("Symbolic links are not readable in the sandbox")
+
+        absolute_path = candidate.resolve()
         try:
             absolute_path.relative_to(root)
         except ValueError as exc:
@@ -670,6 +727,10 @@ class SandboxService:
     def _ignore(self, directory: str, names: list[str]) -> set[str]:
         ignored: set[str] = set()
         for name in names:
-            if name in self.IGNORED_NAMES or name.startswith(".env"):
+            if (
+                name in self.IGNORED_NAMES
+                or name.startswith(".env")
+                or (Path(directory) / name).is_symlink()
+            ):
                 ignored.add(name)
         return ignored

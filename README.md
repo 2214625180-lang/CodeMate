@@ -93,6 +93,8 @@ cp .env.example .env
 docker compose up --build
 ```
 
+默认只把服务端口绑定到 `127.0.0.1`。只有在可信局域网演示且理解开发凭据风险时，才显式设置 `CODEMATE_BIND_HOST=0.0.0.0`。
+
 常用验证命令：
 
 ```bash

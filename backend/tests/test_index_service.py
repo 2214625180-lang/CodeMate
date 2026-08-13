@@ -23,8 +23,7 @@ class RecordingVectorStore:
         self.upserted: list[object] = []
         self.deleted_point_ids: list[str] = []
 
-    def ensure_collection(self, dimension: int, *, recreate_on_mismatch: bool) -> None:
-        assert recreate_on_mismatch is True
+    def ensure_collection(self, dimension: int) -> None:
         self.collection_dimensions.append(dimension)
 
     def upsert_chunks(self, points: list[object]) -> None:

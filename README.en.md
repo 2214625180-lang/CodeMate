@@ -93,6 +93,8 @@ cp .env.example .env
 docker compose up --build
 ```
 
+Published service ports bind to `127.0.0.1` by default. Set `CODEMATE_BIND_HOST=0.0.0.0` only for a trusted LAN demo after accounting for the development credentials.
+
 Common verification commands:
 
 ```bash

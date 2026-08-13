@@ -39,7 +39,20 @@ from app.services.retrieval_service import RetrievalResult, RetrievalService
 
 BENCHMARK_PROTOCOL_VERSION = "codemate-benchmark/v1"
 LOCAL_AGENT_TOOL_NAMES = frozenset(
-    {"SearchCode", "ReadFile", "ListFiles", "FindSymbol", "FindReferences", "RunTests"}
+    {
+        "apply_patch",
+        "find_references",
+        "find_symbol",
+        "get_call_graph",
+        "get_import_graph",
+        "git_diff",
+        "inspect_repository",
+        "list_files",
+        "read_file",
+        "reset_workspace",
+        "run_tests",
+        "search_code",
+    }
 )
 
 
@@ -1570,20 +1583,18 @@ class EvaluationService:
 
     def _agent_result_json(self, run: AgentRun) -> dict:
         final_diff = run.final_diff or ""
+        tool_call_steps = [step for step in run.steps if step.step_type == "tool_call"]
         local_tool_calls = sum(
-            1
-            for step in run.steps
-            if step.step_type == "agent_observation"
-            and step.tool_name in LOCAL_AGENT_TOOL_NAMES
+            1 for step in tool_call_steps if step.tool_name in LOCAL_AGENT_TOOL_NAMES
         )
-        mcp_tool_calls = sum(1 for step in run.steps if step.step_type == "tool_call")
+        mcp_tool_calls = len(tool_call_steps) - local_tool_calls
         token_usage = self._agent_token_usage(run)
         return {
             "agent_run_id": run.id,
             "agent_status": run.status,
             "summary": run.final_summary,
             "iterations": run.iterations,
-            "tool_calls": local_tool_calls + mcp_tool_calls,
+            "tool_calls": len(tool_call_steps),
             "local_tool_calls": local_tool_calls,
             "mcp_tool_calls": mcp_tool_calls,
             "planner_tokens": token_usage["planner_tokens"],

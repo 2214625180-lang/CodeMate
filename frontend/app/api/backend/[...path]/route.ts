@@ -262,7 +262,13 @@ function isMCPQuotaPath(path: string): boolean {
 }
 
 function isProductPath(path: string): boolean {
-  return path === "/repos" || path.startsWith("/repos/") || path.startsWith("/runs/");
+  return (
+    path === "/repos" ||
+    path.startsWith("/repos/") ||
+    path.startsWith("/runs/") ||
+    path === "/github-app" ||
+    path.startsWith("/github-app/")
+  );
 }
 
 function isDelegatedAuthorizationStart(path: string): boolean {

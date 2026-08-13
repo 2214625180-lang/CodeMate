@@ -17,6 +17,12 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+def include_object(_object, name, object_type, _reflected, _compare_to) -> bool:
+    # This PostgreSQL expression index is intentionally managed by its revision
+    # instead of SQLite-compatible ORM metadata.
+    return not (object_type == "index" and name == "ix_code_chunks_fts")
+
+
 def run_migrations_offline() -> None:
     context.configure(
         url=settings.database_url,
@@ -24,6 +30,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        include_object=include_object,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -41,6 +48,7 @@ def run_migrations_online() -> None:
             target_metadata=target_metadata,
             compare_type=True,
             render_as_batch=connection.dialect.name == "sqlite",
+            include_object=include_object,
         )
         with context.begin_transaction():
             context.run_migrations()

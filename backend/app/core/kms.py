@@ -13,6 +13,7 @@ from app.core.config import settings
 ENVELOPE_PREFIX = "codemate:kms:v2:"
 ENVELOPE_AAD = b"codemate-mcp-credential-v2"
 KMS_CONTEXT = {"application": "codemate", "purpose": "mcp-credential"}
+DEFAULT_ENVELOPE_PURPOSE = KMS_CONTEXT["purpose"]
 
 
 class KMSConfigurationError(RuntimeError):
@@ -148,18 +149,24 @@ def kms_provider(name: str | None = None) -> EnvelopeKMS:
     raise KMSConfigurationError(f"Unsupported MCP registry KMS provider: {provider}")
 
 
-def encrypt_envelope(plaintext: bytes, *, binding: str | None = None) -> str:
+def encrypt_envelope(
+    plaintext: bytes,
+    *,
+    binding: str | None = None,
+    purpose: str = DEFAULT_ENVELOPE_PURPOSE,
+) -> str:
     provider = kms_provider()
     binding_sha256 = _binding_sha256(binding)
-    context = {**KMS_CONTEXT, "binding": binding_sha256}
+    context = _envelope_context(purpose, binding_sha256)
     generated = provider.generate_data_key(context)
     nonce = os.urandom(12)
     ciphertext = AESGCM(generated.plaintext).encrypt(
-        nonce, plaintext, ENVELOPE_AAD + binding_sha256.encode()
+        nonce, plaintext, _envelope_aad(purpose, binding_sha256)
     )
     envelope = {
         "version": 2,
         "algorithm": "AES-256-GCM",
+        "purpose": purpose,
         "kms_provider": generated.provider,
         "kms_key_id": generated.key_id,
         "binding_sha256": binding_sha256,
@@ -173,7 +180,12 @@ def encrypt_envelope(plaintext: bytes, *, binding: str | None = None) -> str:
     return f"{ENVELOPE_PREFIX}{encoded}"
 
 
-def decrypt_envelope(value: str, *, binding: str | None = None) -> bytes:
+def decrypt_envelope(
+    value: str,
+    *,
+    binding: str | None = None,
+    purpose: str = DEFAULT_ENVELOPE_PURPOSE,
+) -> bytes:
     if not value.startswith(ENVELOPE_PREFIX):
         raise KMSDecryptionError("Credential is not a KMS envelope")
     try:
@@ -182,6 +194,9 @@ def decrypt_envelope(value: str, *, binding: str | None = None) -> bytes:
         )
         if envelope.get("version") != 2 or envelope.get("algorithm") != "AES-256-GCM":
             raise ValueError("unsupported envelope version")
+        stored_purpose = str(envelope.get("purpose") or DEFAULT_ENVELOPE_PURPOSE)
+        if not _constant_time_equal(stored_purpose.encode(), purpose.encode()):
+            raise KMSDecryptionError("KMS envelope purpose does not match")
         stored_binding = str(envelope.get("binding_sha256") or _binding_sha256(None))
         if binding is not None and not _constant_time_equal(
             stored_binding.encode(), _binding_sha256(binding).encode()
@@ -191,12 +206,12 @@ def decrypt_envelope(value: str, *, binding: str | None = None) -> bytes:
         data_key = provider.decrypt_data_key(
             _unb64(envelope["encrypted_data_key"]),
             key_id=str(envelope["kms_key_id"]),
-            context={**KMS_CONTEXT, "binding": stored_binding},
+            context=_envelope_context(stored_purpose, stored_binding),
         )
         return AESGCM(data_key).decrypt(
             _unb64(envelope["nonce"]),
             _unb64(envelope["ciphertext"]),
-            ENVELOPE_AAD + stored_binding.encode(),
+            _envelope_aad(stored_purpose, stored_binding),
         )
     except KMSConfigurationError:
         raise
@@ -253,6 +268,16 @@ def _constant_time_equal(left: bytes, right: bytes) -> bool:
 
 def _binding_sha256(binding: str | None) -> str:
     return hashlib.sha256((binding or "unbound").encode()).hexdigest()
+
+
+def _envelope_context(purpose: str, binding_sha256: str) -> dict[str, str]:
+    return {**KMS_CONTEXT, "purpose": purpose, "binding": binding_sha256}
+
+
+def _envelope_aad(purpose: str, binding_sha256: str) -> bytes:
+    if purpose == DEFAULT_ENVELOPE_PURPOSE:
+        return ENVELOPE_AAD + binding_sha256.encode()
+    return b"codemate-envelope-v2:" + purpose.encode() + b":" + binding_sha256.encode()
 
 
 def _local_wrap_aad(context: dict[str, str] | None) -> bytes:

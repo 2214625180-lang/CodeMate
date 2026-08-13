@@ -11,6 +11,7 @@ from app.workers.jobs import (
     expire_mcp_approval_job,
     recover_mcp_execution_job,
     index_repository_job,
+    purge_agent_timeline_payloads_job,
     probe_mcp_servers_job,
     scan_mcp_compliance_job,
     reconcile_mcp_quotas_job,
@@ -167,6 +168,29 @@ def enqueue_security_audit_delivery(
             recurring,
             **job_kwargs,
         )
+    return job.id
+
+
+def enqueue_agent_timeline_payload_cleanup(
+    *,
+    delay_seconds: int = 0,
+    recurring: bool = False,
+) -> str:
+    queue = get_index_queue()
+    job_kwargs = {"job_timeout": 300}
+    if recurring:
+        interval = max(300, settings.agent_timeline_cleanup_interval_seconds)
+        target_time = time.time() + max(0, delay_seconds)
+        job_kwargs["job_id"] = f"agent-timeline-purge-{int(target_time // interval)}"
+    if delay_seconds > 0:
+        job = queue.enqueue_in(
+            timedelta(seconds=delay_seconds),
+            purge_agent_timeline_payloads_job,
+            recurring,
+            **job_kwargs,
+        )
+    else:
+        job = queue.enqueue(purge_agent_timeline_payloads_job, recurring, **job_kwargs)
     return job.id
 
 

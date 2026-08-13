@@ -4,18 +4,26 @@ from types import SimpleNamespace
 from types import ModuleType
 
 from app.core.config import settings
-from app.core.telemetry import _safe_attributes, operation_span, record_span_usage
+from app.core.telemetry import _safe_attributes, mark_span_error, operation_span, record_span_usage
 
 
 class _FakeSpan:
     def __init__(self) -> None:
         self.attributes: dict[str, object] = {}
+        self.exceptions: list[Exception] = []
+        self.status: object | None = None
 
     def set_attribute(self, key: str, value: object) -> None:
         self.attributes[key] = value
 
     def get_span_context(self):
         return SimpleNamespace(trace_id=0xABCD)
+
+    def record_exception(self, error: Exception) -> None:
+        self.exceptions.append(error)
+
+    def set_status(self, status: object) -> None:
+        self.status = status
 
 
 class _FakeTracer:
@@ -74,3 +82,20 @@ def test_safe_telemetry_attributes_only_allows_metadata_scalars() -> None:
         "tool.name": "read_file",
         "sandbox.runtime": "docker",
     }
+
+
+def test_telemetry_error_records_only_the_exception_class(monkeypatch) -> None:
+    trace_module = ModuleType("opentelemetry.trace")
+    trace_module.StatusCode = SimpleNamespace(ERROR="error")  # type: ignore[attr-defined]
+    trace_module.Status = lambda status, description: (status, description)  # type: ignore[attr-defined]
+    opentelemetry_module = ModuleType("opentelemetry")
+    opentelemetry_module.trace = trace_module  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "opentelemetry", opentelemetry_module)
+    monkeypatch.setitem(sys.modules, "opentelemetry.trace", trace_module)
+    span = _FakeSpan()
+
+    mark_span_error(span, RuntimeError("authorization=telemetry-secret"))
+
+    assert span.attributes["codemate.error_code"] == "runtimeerror"
+    assert str(span.exceptions[0]) == "runtimeerror"
+    assert "telemetry-secret" not in str(span.status)

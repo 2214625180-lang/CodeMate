@@ -9,41 +9,49 @@ class VectorDimensionMismatchError(RuntimeError):
 
 class QdrantVectorStore:
     def __init__(self, collection_name: str | None = None):
-        self.collection_name = collection_name or settings.qdrant_collection
+        self.collection_base_name = collection_name or settings.qdrant_collection
+        self._active_vector_size = settings.embedding_dimension
+        self.collection_name = self._collection_name(self._active_vector_size)
         self.client = QdrantClient(url=settings.qdrant_url)
 
-    def ensure_collection(self, vector_size: int, *, recreate_on_mismatch: bool = False) -> None:
+    def ensure_collection(self, vector_size: int) -> None:
         if vector_size <= 0:
             raise ValueError("Qdrant vector size must be greater than zero.")
 
+        collection_name = self._collection_name(vector_size)
         collections = self.client.get_collections().collections
-        exists = any(collection.name == self.collection_name for collection in collections)
+        exists = any(collection.name == collection_name for collection in collections)
         if not exists:
-            self._create_collection(vector_size)
+            self._create_collection(collection_name, vector_size)
+            self._set_active_collection(collection_name, vector_size)
             return
 
-        current_size = self._current_vector_size()
+        current_size = self._current_vector_size(collection_name)
         if current_size == vector_size:
+            self._set_active_collection(collection_name, vector_size)
             return
 
         message = (
-            f"Qdrant collection {self.collection_name!r} uses vector size "
+            f"Qdrant collection {collection_name!r} uses vector size "
             f"{current_size or 'unknown'}, but the configured embedding size is {vector_size}."
         )
-        if not recreate_on_mismatch:
-            raise VectorDimensionMismatchError(message)
+        raise VectorDimensionMismatchError(message)
 
-        self.client.delete_collection(collection_name=self.collection_name)
-        self._create_collection(vector_size)
+    def _collection_name(self, vector_size: int) -> str:
+        return f"{self.collection_base_name}__embedding_{vector_size}d"
 
-    def _create_collection(self, vector_size: int) -> None:
+    def _set_active_collection(self, collection_name: str, vector_size: int) -> None:
+        self.collection_name = collection_name
+        self._active_vector_size = vector_size
+
+    def _create_collection(self, collection_name: str, vector_size: int) -> None:
         self.client.create_collection(
-            collection_name=self.collection_name,
+            collection_name=collection_name,
             vectors_config=models.VectorParams(size=vector_size, distance=models.Distance.COSINE),
         )
 
-    def _current_vector_size(self) -> int | None:
-        collection = self.client.get_collection(collection_name=self.collection_name)
+    def _current_vector_size(self, collection_name: str) -> int | None:
+        collection = self.client.get_collection(collection_name=collection_name)
         vectors = collection.config.params.vectors
         return _vector_size(vectors)
 
@@ -96,7 +104,7 @@ class QdrantVectorStore:
     def delete_points(self, point_ids: list[str]) -> None:
         if not point_ids:
             return
-        self.ensure_collection(settings.embedding_dimension)
+        self.ensure_collection(self._active_vector_size)
         self.client.delete(
             collection_name=self.collection_name,
             points_selector=models.PointIdsList(points=point_ids),

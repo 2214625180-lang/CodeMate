@@ -1,14 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AgentTimeline } from "@/components/agent/AgentTimeline";
 import { TestResultPanel } from "@/components/agent/TestResultPanel";
 import { DiffViewer } from "@/components/diff/DiffViewer";
 import {
-  API_BASE_URL,
+  backendApiUrl,
   createFixRun,
   decideMCPApproval,
   getRun,
@@ -57,6 +57,7 @@ const TERMINAL_RUN_STATUSES = new Set([
 
 export default function RepoFixPage() {
   const params = useParams<{ repoId: string }>();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const repoId = params.repoId;
   const requestedRunId = searchParams.get("runId");
@@ -78,6 +79,8 @@ export default function RepoFixPage() {
   >({});
   const [reconcilingExecutionId, setReconcilingExecutionId] = useState<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const activeRunIdRef = useRef<string | null>(null);
+  const loadedUrlRunIdRef = useRef<string | null>(null);
 
   const latestPatch = useMemo(() => {
     const patchEvent = [...events].reverse().find((event) => event.type === "patch");
@@ -98,13 +101,17 @@ export default function RepoFixPage() {
   const refreshRun = useCallback(async (nextRunId: string) => {
     try {
       const data = await getRun(nextRunId);
+      if (activeRunIdRef.current !== nextRunId) {
+        return;
+      }
       setRun(data);
       setIssue((current) => current || data.user_input);
       setTestCommand((current) => data.test_command || current);
-      if (TERMINAL_RUN_STATUSES.has(data.status)) {
-        setIsRunning(false);
-      }
+      setIsRunning(!TERMINAL_RUN_STATUSES.has(data.status));
     } catch (err) {
+      if (activeRunIdRef.current !== nextRunId) {
+        return;
+      }
       setError(err instanceof Error ? err.message : "Failed to load run");
     }
   }, []);
@@ -112,11 +119,15 @@ export default function RepoFixPage() {
   const connectTrace = useCallback(
     (nextRunId: string) => {
       eventSourceRef.current?.close();
-      const source = new EventSource(`${API_BASE_URL}/runs/${nextRunId}/trace`);
+      activeRunIdRef.current = nextRunId;
+      const source = new EventSource(backendApiUrl(`/runs/${nextRunId}/trace`));
       eventSourceRef.current = source;
 
       for (const eventName of TRACE_EVENTS) {
         source.addEventListener(eventName, (message) => {
+          if (activeRunIdRef.current !== nextRunId) {
+            return;
+          }
           const event = JSON.parse((message as MessageEvent).data) as TraceEvent;
           setEvents((current) => {
             if (current.some((item) => item.id === event.id)) {
@@ -155,7 +166,9 @@ export default function RepoFixPage() {
 
       source.onerror = () => {
         source.close();
-        setIsRunning(false);
+        if (activeRunIdRef.current !== nextRunId) {
+          return;
+        }
         void refreshRun(nextRunId);
       };
     },
@@ -164,14 +177,17 @@ export default function RepoFixPage() {
 
   useEffect(() => {
     return () => {
+      activeRunIdRef.current = null;
       eventSourceRef.current?.close();
     };
   }, []);
 
   useEffect(() => {
-    if (!requestedRunId || requestedRunId === runId) {
+    if (!requestedRunId || requestedRunId === loadedUrlRunIdRef.current) {
       return;
     }
+    loadedUrlRunIdRef.current = requestedRunId;
+    activeRunIdRef.current = requestedRunId;
     setRunId(requestedRunId);
     setRun(null);
     setEvents([]);
@@ -179,7 +195,7 @@ export default function RepoFixPage() {
     setIsRunning(true);
     void refreshRun(requestedRunId);
     connectTrace(requestedRunId);
-  }, [connectTrace, refreshRun, requestedRunId, runId]);
+  }, [connectTrace, refreshRun, requestedRunId]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -187,6 +203,8 @@ export default function RepoFixPage() {
       return;
     }
 
+    activeRunIdRef.current = null;
+    eventSourceRef.current?.close();
     setRun(null);
     setRunId(null);
     setEvents([]);
@@ -204,7 +222,13 @@ export default function RepoFixPage() {
           ? { identityId: delegatedIdentityId, delegationToken }
           : undefined
       );
+      loadedUrlRunIdRef.current = response.run_id;
+      activeRunIdRef.current = response.run_id;
       setRunId(response.run_id);
+      router.replace(
+        `/repos/${encodeURIComponent(repoId)}/fix?runId=${encodeURIComponent(response.run_id)}`,
+        { scroll: false }
+      );
       connectTrace(response.run_id);
     } catch (err) {
       setIsRunning(false);

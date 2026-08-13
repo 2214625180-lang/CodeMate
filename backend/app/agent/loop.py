@@ -353,9 +353,10 @@ class LocalAgentExecutor:
                 f"exit_code={result.get('exit_code')}, passed={bool(result.get('passed'))}."
             )
         if isinstance(action, (GetImportGraph, GetCallGraph)) and isinstance(result, dict):
+            relation = result.get("relation", "relations")
             return (
-                f"{action.action} returned {len(result.get('nodes') or [])} node(s) and "
-                f"{len(result.get('edges') or [])} edge(s)."
+                f"{action.action} returned {len(result.get('nodes') or [])} static-navigation "
+                f"node(s) and {len(result.get('edges') or [])} {relation} candidate edge(s)."
             )
         if isinstance(result, list):
             paths: list[str] = []

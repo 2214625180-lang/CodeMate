@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { FormEvent, useState } from "react";
 
 import { CitationCard } from "@/components/chat/CitationCard";
-import { API_BASE_URL } from "@/lib/api";
+import { backendApiUrl } from "@/lib/api";
 import type { CodeCitation } from "@/lib/types";
 
 type SseEvent =
@@ -36,7 +36,7 @@ export default function RepoChatPage() {
     setIsStreaming(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/repos/${repoId}/chat`, {
+      const response = await fetch(backendApiUrl(`/repos/${repoId}/chat`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: trimmed })

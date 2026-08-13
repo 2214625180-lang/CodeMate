@@ -1,3 +1,4 @@
+import json
 import time
 from uuid import uuid4
 
@@ -8,11 +9,13 @@ from sqlalchemy.orm import sessionmaker
 
 from app.api.routes import repos, runs
 from app.api import auth as product_auth
+from app.core.config import settings
 from app.core.database import Base, get_db
 from app.models.agent_run import AgentRun
 from app.models.agent_step import AgentStep
 from app.models.code_file import CodeFile
 from app.models.repository import Repository
+from app.services.agent_step_service import AgentStepService
 
 
 def make_client(tmp_path, monkeypatch, *, owner_id: str = "local:local-dev"):
@@ -137,6 +140,7 @@ def make_client(tmp_path, monkeypatch, *, owner_id: str = "local:local-dev"):
     app.include_router(repos.router)
     app.include_router(runs.router)
     app.dependency_overrides[get_db] = override_db
+    app.state.timeline_session_factory = session_factory
     return TestClient(app), queued_runs
 
 
@@ -217,6 +221,33 @@ def test_run_api_returns_timeline_and_persists_user_feedback(tmp_path, monkeypat
         "feedback_note": "matches the expected diff",
     }
     assert client.get("/runs/missing").status_code == 404
+
+
+def test_restricted_timeline_requires_admin_and_public_timeline_is_redacted(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "mcp_registry_kms_provider", "local")
+    monkeypatch.setattr(settings, "mcp_registry_master_key", "product-timeline-key-32-characters-long")
+    monkeypatch.setattr(settings, "mcp_registry_previous_master_key", None)
+    monkeypatch.setattr(settings, "evaluation_admin_token", "timeline-admin-token")
+    client, _queued_runs = make_client(tmp_path, monkeypatch)
+    with client.app.state.timeline_session_factory() as db:
+        AgentStepService(db).record(
+            run_id="run-product",
+            step_type="tool_result",
+            output_json={"stderr": "API_TOKEN=product-timeline-secret", "exit_code": 1},
+        )
+
+    public = client.get("/runs/run-product")
+    denied = client.get("/runs/run-product/timeline/restricted")
+    admin = client.get(
+        "/runs/run-product/timeline/restricted",
+        headers={"Authorization": "Bearer timeline-admin-token"},
+    )
+
+    assert public.status_code == 200
+    assert "product-timeline-secret" not in json.dumps(public.json())
+    assert denied.status_code == 401
+    assert admin.status_code == 200
+    assert admin.json()[-1]["output_json"]["stderr"] == "API_TOKEN=product-timeline-secret"
 
 
 def test_product_api_requires_signed_identity_and_scopes_resources_to_owner(tmp_path, monkeypatch):
