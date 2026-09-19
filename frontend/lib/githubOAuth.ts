@@ -56,7 +56,7 @@ export async function exchangeGitHubCode(
   });
   const payload = (await response.json()) as GitHubTokenResponse;
   if (!response.ok || !payload.access_token) {
-    throw new Error(payload.error_description || payload.error || "Failed to exchange GitHub code");
+    throw new Error(payload.error_description || payload.error || "交换 GitHub 授权码失败");
   }
   return payload.access_token;
 }
@@ -107,7 +107,7 @@ async function githubGet<T>(accessToken: string, url: string): Promise<T> {
     cache: "no-store"
   });
   if (!response.ok) {
-    throw new Error(`GitHub API request failed with status ${response.status}`);
+    throw new Error(`GitHub API 请求失败，状态码：${response.status}`);
   }
   return (await response.json()) as T;
 }

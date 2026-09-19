@@ -41,7 +41,7 @@ export default function MultiRepoChatPage() {
       });
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load repositories");
+      setError(err instanceof Error ? err.message : "加载仓库列表失败");
     } finally {
       setIsLoading(false);
     }
@@ -79,7 +79,7 @@ export default function MultiRepoChatPage() {
       });
 
       if (!response.ok || !response.body) {
-        throw new Error(`Multi-repo chat request failed with status ${response.status}`);
+        throw new Error(`跨仓库问答请求失败，状态码：${response.status}`);
       }
 
       await readSse(response.body, (message) => {
@@ -92,7 +92,7 @@ export default function MultiRepoChatPage() {
         }
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Multi-repo chat request failed");
+      setError(err instanceof Error ? err.message : "跨仓库问答请求失败");
     } finally {
       setIsStreaming(false);
     }
@@ -102,31 +102,31 @@ export default function MultiRepoChatPage() {
     <div className="space-y-6">
       <div>
         <Link href="/repos" className="text-sm text-slate-600 hover:text-slate-950">
-          Back to repositories
+          返回仓库列表
         </Link>
-        <h1 className="mt-3 text-2xl font-semibold text-slate-950">Multi-repo Q&A</h1>
+        <h1 className="mt-3 text-2xl font-semibold text-slate-950">跨仓库问答</h1>
         <p className="mt-2 text-sm text-slate-600">
-          Ask one question across indexed repositories. Citations include the source repository.
+          同时向多个已索引仓库提问，代码引用会标明来源仓库。
         </p>
       </div>
 
       <section className="rounded-lg border border-border bg-white p-5">
         <div className="flex items-center justify-between gap-4">
-          <h2 className="text-lg font-semibold text-slate-950">Repositories</h2>
+          <h2 className="text-lg font-semibold text-slate-950">仓库</h2>
           <button
             type="button"
             onClick={() => setSelectedRepoIds(indexedRepositories.map((repository) => repository.id))}
             disabled={indexedRepositories.length === 0}
             className="rounded-md border border-border px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
           >
-            Select all indexed
+            选择全部已索引仓库
           </button>
         </div>
 
         {isLoading ? (
-          <p className="mt-4 text-sm text-slate-500">Loading repositories...</p>
+          <p className="mt-4 text-sm text-slate-500">正在加载仓库列表…</p>
         ) : indexedRepositories.length === 0 ? (
-          <p className="mt-4 text-sm text-slate-500">No indexed repositories available.</p>
+          <p className="mt-4 text-sm text-slate-500">暂无可用的已索引仓库。</p>
         ) : (
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
             {indexedRepositories.map((repository) => (
@@ -145,7 +145,7 @@ export default function MultiRepoChatPage() {
                     {repository.name}
                   </span>
                   <span className="block truncate text-xs text-slate-500">
-                    {repository.file_count} files, {repository.chunk_count} chunks
+                    {repository.file_count} 个文件， {repository.chunk_count} 个代码块
                   </span>
                 </span>
               </label>
@@ -156,7 +156,7 @@ export default function MultiRepoChatPage() {
 
       <form onSubmit={handleSubmit} className="rounded-lg border border-border bg-white p-5">
         <label htmlFor="question" className="text-sm font-medium text-slate-700">
-          Question
+          问题
         </label>
         <textarea
           id="question"
@@ -172,7 +172,7 @@ export default function MultiRepoChatPage() {
             disabled={isStreaming || selectedRepoIds.length === 0}
             className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
           >
-            {isStreaming ? "Streaming..." : "Ask across repos"}
+            {isStreaming ? "正在生成…" : "跨仓库提问"}
           </button>
         </div>
       </form>
@@ -180,17 +180,17 @@ export default function MultiRepoChatPage() {
       {error ? <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
 
       <section className="rounded-lg border border-border bg-white p-5">
-        <h2 className="text-lg font-semibold text-slate-950">Answer</h2>
+        <h2 className="text-lg font-semibold text-slate-950">回答</h2>
         <div className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-700">
-          {answer || (isStreaming ? "Waiting for tokens..." : "No answer yet.")}
+          {answer || (isStreaming ? "正在等待回答…" : "暂无回答。")}
         </div>
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-slate-950">Citations</h2>
+        <h2 className="text-lg font-semibold text-slate-950">代码引用</h2>
         {citations.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border bg-white p-5 text-sm text-slate-500">
-            No citations yet.
+            暂无引用。
           </div>
         ) : (
           citations.map((citation) => (

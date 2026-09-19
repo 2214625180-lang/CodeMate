@@ -31,7 +31,7 @@ export function CitationCard({ repoId, citation }: Props) {
       );
       setContent(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load file content");
+      setError(err instanceof Error ? err.message : "加载文件内容失败");
     } finally {
       setIsLoading(false);
     }
@@ -50,16 +50,16 @@ export function CitationCard({ repoId, citation }: Props) {
           {citation.file_path}:{citation.start_line ?? "?"}-{citation.end_line ?? "?"}
         </span>
         <span className="text-xs text-slate-500">
-          {citation.symbol_name ?? "unknown symbol"}
+          {citation.symbol_name ?? "未知符号"}
           {citation.symbol_type ? ` · ${citation.symbol_type}` : ""}
         </span>
       </button>
 
-      {isLoading ? <p className="px-4 pb-3 text-sm text-slate-500">Loading snippet...</p> : null}
+      {isLoading ? <p className="px-4 pb-3 text-sm text-slate-500">正在加载代码片段…</p> : null}
       {error ? <p className="px-4 pb-3 text-sm text-red-600">{error}</p> : null}
       {content ? (
         <pre className="max-h-96 overflow-auto border-t border-border bg-slate-950 p-4 text-xs leading-5 text-slate-100">
-          <code>{content.content || "(empty snippet)"}</code>
+          <code>{content.content || "（空代码片段）"}</code>
         </pre>
       ) : null}
     </div>

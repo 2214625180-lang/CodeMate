@@ -48,7 +48,7 @@ export default function EvaluationComparePage() {
       setCandidateRunId((current) => current || defaults.candidateRunId);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load evaluation runs");
+      setError(err instanceof Error ? err.message : "加载评测记录失败");
     } finally {
       setIsLoading(false);
     }
@@ -63,7 +63,7 @@ export default function EvaluationComparePage() {
       const data = await listEvaluationDatasets();
       setDatasets(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load benchmark datasets");
+      setError(err instanceof Error ? err.message : "加载基准数据集失败");
     }
   }, []);
 
@@ -74,7 +74,7 @@ export default function EvaluationComparePage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!baselineRunId || !candidateRunId || baselineRunId === candidateRunId) {
-      setError("Choose two different evaluation runs.");
+      setError("请选择两次不同的评测运行。");
       return;
     }
 
@@ -85,7 +85,7 @@ export default function EvaluationComparePage() {
       setReport(data);
       setGateResult(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to compare evaluation runs");
+      setError(err instanceof Error ? err.message : "对比评测运行失败");
     } finally {
       setIsComparing(false);
     }
@@ -93,7 +93,7 @@ export default function EvaluationComparePage() {
 
   async function handleGateCheck() {
     if (!candidateRun || !candidateDataset) {
-      setError("Choose a candidate run that belongs to a benchmark dataset.");
+      setError("请选择属于基准数据集的候选运行。");
       return;
     }
 
@@ -106,7 +106,7 @@ export default function EvaluationComparePage() {
       setBaselineRunId(data.baseline_run.id);
       setCandidateRunId(data.candidate_run.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to evaluate regression gate");
+      setError(err instanceof Error ? err.message : "执行回归门禁检查失败");
     } finally {
       setIsCheckingGate(false);
     }
@@ -116,18 +116,17 @@ export default function EvaluationComparePage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-medium uppercase text-slate-500">Evaluation Center</p>
-          <h1 className="mt-2 text-2xl font-semibold text-slate-950">Regression Report</h1>
+          <p className="text-sm font-medium uppercase text-slate-500">评测中心</p>
+          <h1 className="mt-2 text-2xl font-semibold text-slate-950">回归报告</h1>
           <p className="mt-2 max-w-3xl text-sm text-slate-600">
-            Compare two completed benchmark runs to spot metric regressions, changed failures, and
-            case-level behavior shifts.
+            对比两次已完成的基准评测，检查指标退化、失败变化和各用例的行为差异。
           </p>
         </div>
         <Link
           href="/evaluations"
           className="rounded-md border border-border px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
         >
-          Evaluation Center
+          评测中心
         </Link>
       </div>
 
@@ -135,14 +134,14 @@ export default function EvaluationComparePage() {
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
           <RunSelect
             id="baseline-run"
-            label="Baseline"
+            label="基线"
             value={baselineRunId}
             runs={completedRuns}
             onChange={setBaselineRunId}
           />
           <RunSelect
             id="candidate-run"
-            label="Candidate"
+            label="候选"
             value={candidateRunId}
             runs={completedRuns}
             onChange={setCandidateRunId}
@@ -153,27 +152,27 @@ export default function EvaluationComparePage() {
               disabled={isComparing || !baselineRunId || !candidateRunId}
               className="min-h-10 rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
             >
-              {isComparing ? "Comparing..." : "Generate report"}
+              {isComparing ? "正在对比…" : "生成报告"}
             </button>
           </div>
         </div>
 
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
-          <RunContext run={baselineRun} title="Baseline context" />
-          <RunContext run={candidateRun} title="Candidate context" />
+          <RunContext run={baselineRun} title="基线上下文" />
+          <RunContext run={candidateRun} title="候选上下文" />
         </div>
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
           <div className="text-sm text-slate-600">
             {candidateDataset ? (
               <span>
-                Gate policy: {candidateDataset.name} · baseline{" "}
+                门禁策略： {candidateDataset.name} · 基线{" "}
                 {candidateDataset.baseline_run_id
                   ? candidateDataset.baseline_run_id.slice(0, 8)
-                  : "not set"}
+                  : "未设置"}
               </span>
             ) : (
-              <span>Gate policy requires a candidate run created from a benchmark dataset.</span>
+              <span>门禁策略要求候选运行来自基准数据集。</span>
             )}
           </div>
           <button
@@ -187,7 +186,7 @@ export default function EvaluationComparePage() {
             onClick={() => void handleGateCheck()}
             className="rounded-md border border-border px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
           >
-            {isCheckingGate ? "Checking gate..." : "Evaluate gate"}
+            {isCheckingGate ? "正在检查门禁…" : "检查门禁"}
           </button>
         </div>
       </form>
@@ -196,11 +195,11 @@ export default function EvaluationComparePage() {
 
       {isLoading ? (
         <section className="rounded-lg border border-border bg-white p-5 text-sm text-slate-500">
-          Loading evaluation runs...
+          正在加载评测记录…
         </section>
       ) : completedRuns.length < 2 ? (
         <section className="rounded-lg border border-border bg-white p-5 text-sm text-slate-500">
-          At least two completed evaluation runs are required.
+          至少需要两次已完成的评测运行。
         </section>
       ) : null}
 
@@ -234,7 +233,7 @@ function RunSelect({
         onChange={(event) => onChange(event.target.value)}
         className="mt-2 min-h-10 w-full rounded-md border border-border bg-white px-3 text-sm outline-none focus:border-slate-500"
       >
-        <option value="">Select run</option>
+        <option value="">选择运行</option>
         {runs.map((run) => (
           <option key={run.id} value={run.id}>
             {runLabel(run)}
@@ -249,7 +248,7 @@ function RunContext({ run, title }: { run: EvaluationRun | null; title: string }
   if (!run) {
     return (
       <div className="rounded-md border border-border bg-slate-50 p-3 text-sm text-slate-500">
-        {title}: none selected
+        {title}：尚未选择
       </div>
     );
   }
@@ -260,7 +259,7 @@ function RunContext({ run, title }: { run: EvaluationRun | null; title: string }
       <div className="mt-2 grid gap-1 text-xs text-slate-600">
         <span>{run.name || run.id}</span>
         <span>
-          {run.task_type} · dataset {run.dataset_id ? run.dataset_id.slice(0, 8) : "manual"} · v
+          {run.task_type} · 数据集 {run.dataset_id ? run.dataset_id.slice(0, 8) : "manual"} · v
           {run.dataset_version ?? "n/a"}
         </span>
         <span>{modelLabel(run)}</span>
@@ -275,9 +274,9 @@ function GateResultPanel({ result }: { result: EvaluationGateResult }) {
     <section className="rounded-lg border border-border bg-white p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-slate-950">Regression gate</h2>
+          <h2 className="text-lg font-semibold text-slate-950">回归门禁</h2>
           <p className="mt-1 text-sm text-slate-600">
-            {result.dataset.name} · baseline {result.baseline_run.name || result.baseline_run.id}
+            {result.dataset.name} · 基线 {result.baseline_run.name || result.baseline_run.id}
           </p>
         </div>
         <span
@@ -291,22 +290,22 @@ function GateResultPanel({ result }: { result: EvaluationGateResult }) {
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <MetricCard
-          label="Allowed metric drop"
+          label="允许的指标降幅"
           value={`${Math.round(result.policy.max_primary_metric_drop * 1000) / 10}%`}
           tone="neutral"
         />
         <MetricCard
-          label="Max regressions"
+          label="最多退化用例数"
           value={String(result.policy.max_regressed_cases)}
           tone="neutral"
         />
         <MetricCard
-          label="Incompatible"
+          label="不兼容"
           value={result.policy.allow_incompatible ? "allowed" : "blocked"}
           tone="neutral"
         />
         <MetricCard
-          label="Snapshot"
+          label="快照"
           value={result.policy.require_matching_dataset_snapshot ? "required" : "ignored"}
           tone="neutral"
         />
@@ -316,11 +315,11 @@ function GateResultPanel({ result }: { result: EvaluationGateResult }) {
         <table className="w-full min-w-[760px] border-collapse text-left text-sm">
           <thead>
             <tr className="border-b border-border text-xs uppercase text-slate-500">
-              <th className="py-2 pr-3 font-medium">Check</th>
-              <th className="py-2 pr-3 font-medium">Status</th>
-              <th className="py-2 pr-3 font-medium">Observed</th>
-              <th className="py-2 pr-3 font-medium">Threshold</th>
-              <th className="py-2 font-medium">Rule</th>
+              <th className="py-2 pr-3 font-medium">检查项</th>
+              <th className="py-2 pr-3 font-medium">状态</th>
+              <th className="py-2 pr-3 font-medium">实际值</th>
+              <th className="py-2 pr-3 font-medium">阈值</th>
+              <th className="py-2 font-medium">规则</th>
             </tr>
           </thead>
           <tbody>
@@ -363,7 +362,7 @@ function ReportView({ report }: { report: EvaluationRunCompare }) {
       <section className="rounded-lg border border-border bg-white p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold text-slate-950">Report summary</h2>
+            <h2 className="text-lg font-semibold text-slate-950">报告摘要</h2>
             <p className="mt-1 text-sm text-slate-600">
               {report.baseline_run.name || report.baseline_run.id} →{" "}
               {report.candidate_run.name || report.candidate_run.id}
@@ -390,10 +389,10 @@ function ReportView({ report }: { report: EvaluationRunCompare }) {
             value={primaryDelta ? deltaLabel(primaryDelta) : "n/a"}
             tone={primaryDelta ? metricTone(primaryDelta) : "neutral"}
           />
-          <MetricCard label="Regressions" value={String(regressions.length)} tone="bad" />
-          <MetricCard label="Improvements" value={String(improvements.length)} tone="good" />
+          <MetricCard label="退化" value={String(regressions.length)} tone="bad" />
+          <MetricCard label="改进" value={String(improvements.length)} tone="good" />
           <MetricCard
-            label="Common cases"
+            label="共有用例"
             value={String(numberSummary(report.summary, "common_cases") ?? 0)}
             tone="neutral"
           />
@@ -408,8 +407,8 @@ function ReportView({ report }: { report: EvaluationRunCompare }) {
       <CaseComparisonTable rows={report.case_comparisons} />
 
       <section className="grid gap-6 lg:grid-cols-2">
-        <JsonPanel title="Baseline config" value={report.baseline_run.config_snapshot} />
-        <JsonPanel title="Candidate config" value={report.candidate_run.config_snapshot} />
+        <JsonPanel title="基线配置" value={report.baseline_run.config_snapshot} />
+        <JsonPanel title="候选配置" value={report.candidate_run.config_snapshot} />
       </section>
     </div>
   );
@@ -418,16 +417,16 @@ function ReportView({ report }: { report: EvaluationRunCompare }) {
 function MetricDeltaTable({ metrics }: { metrics: EvaluationMetricDelta[] }) {
   return (
     <section className="rounded-lg border border-border bg-white p-5">
-      <h2 className="text-lg font-semibold text-slate-950">Metric deltas</h2>
+      <h2 className="text-lg font-semibold text-slate-950">指标变化</h2>
       <div className="mt-4 overflow-x-auto">
         <table className="w-full min-w-[560px] border-collapse text-left text-sm">
           <thead>
             <tr className="border-b border-border text-xs uppercase text-slate-500">
-              <th className="py-2 pr-3 font-medium">Metric</th>
-              <th className="py-2 pr-3 font-medium">Baseline</th>
-              <th className="py-2 pr-3 font-medium">Candidate</th>
-              <th className="py-2 pr-3 font-medium">Delta</th>
-              <th className="py-2 font-medium">Impact</th>
+              <th className="py-2 pr-3 font-medium">指标</th>
+              <th className="py-2 pr-3 font-medium">基线</th>
+              <th className="py-2 pr-3 font-medium">候选</th>
+              <th className="py-2 pr-3 font-medium">变化量</th>
+              <th className="py-2 font-medium">影响</th>
             </tr>
           </thead>
           <tbody>
@@ -463,9 +462,9 @@ function FailureDeltaPanel({ failures }: { failures: Record<string, number> }) {
   const entries = Object.entries(failures).sort(([left], [right]) => left.localeCompare(right));
   return (
     <section className="rounded-lg border border-border bg-white p-5">
-      <h2 className="text-lg font-semibold text-slate-950">Failure distribution</h2>
+      <h2 className="text-lg font-semibold text-slate-950">失败分布</h2>
       {entries.length === 0 ? (
-        <p className="mt-4 text-sm text-slate-500">No failure distribution changes.</p>
+        <p className="mt-4 text-sm text-slate-500">失败分布无变化。</p>
       ) : (
         <div className="mt-4 space-y-2">
           {entries.map(([category, delta]) => (
@@ -489,20 +488,20 @@ function FailureDeltaPanel({ failures }: { failures: Record<string, number> }) {
 function CaseComparisonTable({ rows }: { rows: EvaluationCaseComparison[] }) {
   return (
     <section className="rounded-lg border border-border bg-white p-5">
-      <h2 className="text-lg font-semibold text-slate-950">Case comparison</h2>
+      <h2 className="text-lg font-semibold text-slate-950">用例对比</h2>
       {rows.length === 0 ? (
-        <p className="mt-4 text-sm text-slate-500">No case results to compare.</p>
+        <p className="mt-4 text-sm text-slate-500">没有可对比的用例结果。</p>
       ) : (
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[980px] border-collapse text-left text-sm">
             <thead>
               <tr className="border-b border-border text-xs uppercase text-slate-500">
-                <th className="py-2 pr-3 font-medium">Case</th>
-                <th className="py-2 pr-3 font-medium">Status</th>
-                <th className="py-2 pr-3 font-medium">Baseline</th>
-                <th className="py-2 pr-3 font-medium">Candidate</th>
-                <th className="py-2 pr-3 font-medium">Latency</th>
-                <th className="py-2 font-medium">Result summary</th>
+                <th className="py-2 pr-3 font-medium">用例</th>
+                <th className="py-2 pr-3 font-medium">状态</th>
+                <th className="py-2 pr-3 font-medium">基线</th>
+                <th className="py-2 pr-3 font-medium">候选</th>
+                <th className="py-2 pr-3 font-medium">耗时</th>
+                <th className="py-2 font-medium">结果摘要</th>
               </tr>
             </thead>
             <tbody>
@@ -596,7 +595,7 @@ function defaultRunPair(runs: EvaluationRun[]) {
 }
 
 function runLabel(run: EvaluationRun) {
-  const dataset = run.dataset_id ? `dataset ${run.dataset_id.slice(0, 8)}` : "manual";
+  const dataset = run.dataset_id ? `数据集 ${run.dataset_id.slice(0, 8)}` : "manual";
   return `${run.name || run.id} · ${run.task_type} · ${dataset} · ${new Date(
     run.created_at
   ).toLocaleString()}`;
@@ -616,12 +615,12 @@ function modelLabel(run: EvaluationRun) {
 
 function metricLabel(name: string) {
   const labels: Record<string, string> = {
-    fix_success_rate: "Fix success",
-    final_verified_fix_rate: "Final verified fix",
-    avg_latency_sec: "Avg latency",
-    avg_tool_calls: "Avg tool calls",
-    passed: "Passed",
-    failed: "Failed"
+    fix_success_rate: "修复成功率",
+    final_verified_fix_rate: "最终验证通过率",
+    avg_latency_sec: "平均耗时",
+    avg_tool_calls: "平均工具调用次数",
+    passed: "通过",
+    failed: "失败"
   };
   return /^recall_at_\d+$/.test(name) ? `Recall@${name.replace("recall_at_", "")}` : labels[name] ?? name;
 }
@@ -648,7 +647,7 @@ function deltaLabel(metric: EvaluationMetricDelta) {
   }
   const prefix = metric.delta > 0 ? "+" : "";
   if (/^recall_at_\d+$/.test(metric.name) || metric.name.endsWith("_rate")) {
-    return `${prefix}${Math.round(metric.delta * 100)}pp`;
+    return `${prefix}${Math.round(metric.delta * 100)}个百分点`;
   }
   if (metric.name === "avg_latency_sec") {
     return `${prefix}${metric.delta.toFixed(3)}s`;
@@ -698,12 +697,12 @@ function checkStatusClass(passed: boolean | null) {
 
 function checkLabel(name: string) {
   const labels: Record<string, string> = {
-    matching_dataset_snapshot: "Matching dataset snapshot",
-    compatible_runs: "Compatible runs",
-    primary_metric_drop: "Primary metric drop",
-    case_regressions: "Case regressions",
-    avg_latency_increase: "Avg latency increase",
-    avg_tool_call_increase: "Avg tool call increase"
+    matching_dataset_snapshot: "数据集快照一致",
+    compatible_runs: "运行兼容性",
+    primary_metric_drop: "主要指标降幅",
+    case_regressions: "退化用例数",
+    avg_latency_increase: "平均耗时增量",
+    avg_tool_call_increase: "平均工具调用次数增量"
   };
   return labels[name] ?? name;
 }

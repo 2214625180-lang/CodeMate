@@ -94,7 +94,7 @@ async function proxyBackend(request: NextRequest, context: RouteContext) {
       });
       return NextResponse.json(
         {
-          detail: state.detail ?? "CodeMate authentication is not configured correctly."
+          detail: state.detail ?? "CodeMate 身份验证配置不正确。"
         },
         { status: 503 }
       );
@@ -110,7 +110,7 @@ async function proxyBackend(request: NextRequest, context: RouteContext) {
         reason: "session_required",
         ...requestAuditFields(request)
       });
-      return NextResponse.json({ detail: "CodeMate session required" }, { status: 401 });
+      return NextResponse.json({ detail: "请先登录 CodeMate" }, { status: 401 });
     }
     if (
       evaluationPath &&
@@ -128,7 +128,7 @@ async function proxyBackend(request: NextRequest, context: RouteContext) {
         reason: "admin_role_required",
         ...requestAuditFields(request)
       });
-      return NextResponse.json({ detail: "Evaluation admin role required" }, { status: 403 });
+      return NextResponse.json({ detail: "此操作需要评测管理员权限" }, { status: 403 });
     }
   }
 

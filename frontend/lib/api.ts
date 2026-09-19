@@ -52,7 +52,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(detail || `Request failed with status ${response.status}`);
+    throw new Error(detail || `请求失败，状态码：${response.status}`);
   }
 
   if (response.status === 204) {
@@ -65,7 +65,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 export function backendApiUrl(path: string): string {
   if (!path.startsWith("/")) {
-    throw new Error("Backend API paths must start with '/'");
+    throw new Error("后端 API 路径必须以 '/' 开头");
   }
   // Keep product traffic same-origin. The server-side proxy owns backend
   // credentials and converts the HttpOnly session into a signed identity, so

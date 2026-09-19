@@ -88,7 +88,7 @@ export default function MCPTenancyPage() {
   }
 
   function showError(err: unknown) {
-    setError(err instanceof Error ? err.message : "MCP tenancy operation failed");
+    setError(err instanceof Error ? err.message : "MCP 租户操作失败");
   }
 
   const selected = tenants.find((item) => item.id === tenantId) ?? null;
@@ -96,23 +96,23 @@ export default function MCPTenancyPage() {
   return (
     <div className="space-y-6">
       <header>
-        <p className="text-sm font-medium uppercase text-slate-500">MCP Control Plane</p>
-        <h1 className="mt-2 text-2xl font-semibold text-slate-950">Tenant Authorization</h1>
+        <p className="text-sm font-medium uppercase text-slate-500">MCP 控制平面</p>
+        <h1 className="mt-2 text-2xl font-semibold text-slate-950">租户授权</h1>
         <p className="mt-2 text-sm text-slate-600">
-          Default-deny server bindings, repository-aware grants and delegated user OAuth identities.
+          服务绑定默认拒绝访问，支持按仓库授权和委托用户 OAuth 身份。
         </p>
       </header>
       {error ? <Notice tone="error">{error}</Notice> : null}
       {notice ? <Notice tone="info">{notice}</Notice> : null}
       {clientToken ? (
         <Notice tone="warning">
-          Tenant client token (shown once): <code className="break-all">{clientToken}</code>
+          租户客户端令牌（仅显示一次）： <code className="break-all">{clientToken}</code>
         </Notice>
       ) : null}
 
       <section className="grid gap-4 rounded-lg border border-border bg-white p-5 md:grid-cols-2">
         <div>
-          <h2 className="font-semibold">Tenants</h2>
+          <h2 className="font-semibold">租户</h2>
           <select
             className="mt-3 w-full rounded-md border border-border px-3 py-2 text-sm"
             value={tenantId ?? ""}
@@ -121,7 +121,7 @@ export default function MCPTenancyPage() {
               setClientToken(null);
             }}
           >
-            <option value="">Select tenant</option>
+            <option value="">选择租户</option>
             {tenants.map((tenant) => (
               <option key={tenant.id} value={tenant.id}>{tenant.name} ({tenant.slug})</option>
             ))}
@@ -133,28 +133,28 @@ export default function MCPTenancyPage() {
               onClick={() => void perform(async () => {
                 const response = await rotateMCPTenantClientToken(selected.id);
                 setClientToken(response.client_token);
-              }, "Tenant client token rotated. Update callers before leaving this page.")}
+              }, "租户客户端令牌已轮换，请在离开页面前更新调用方。")}
               className="mt-3 rounded-md border border-border px-3 py-2 text-sm font-medium"
             >
-              Rotate client token
+              轮换客户端令牌
             </button>
           ) : null}
         </div>
         <SimpleForm
-          title="Create tenant"
-          fields={[["slug", "acme"], ["name", "Acme Engineering"]]}
+          title="创建租户"
+          fields={[["slug", "acme"], ["name", "示例研发团队"]]}
           disabled={busy}
           onSubmit={(data) => perform(async () => {
             const created = await createMCPTenant(data.slug, data.name);
             setTenantId(created.id);
-          }, "Tenant created.")}
+          }, "租户已创建。")}
         />
       </section>
 
       {selected ? (
         <>
           <section className="grid gap-4 md:grid-cols-3">
-            <Panel title="Memberships" items={memberships.map((item) => `${item.provider}:${item.subject} · ${item.role}`)}>
+            <Panel title="成员关系" items={memberships.map((item) => `${item.provider}:${item.subject} · ${item.role}`)}>
               <SimpleForm
                 fields={[["provider", "github"], ["subject", "alice"], ["role", "member"]]}
                 disabled={busy}
@@ -164,35 +164,35 @@ export default function MCPTenancyPage() {
                     subject: data.subject,
                     role: data.role as "admin" | "approver" | "member"
                   }),
-                  "Tenant member added."
+                  "租户成员已添加。"
                 )}
               />
             </Panel>
-            <Panel title="Server bindings" items={bindings.map((item) => `${item.server_name} · ${item.enabled ? "enabled" : "disabled"}`)}>
+            <Panel title="服务绑定" items={bindings.map((item) => `${item.server_name} · ${item.enabled ? "enabled" : "disabled"}`)}>
               <SimpleForm
                 fields={[["server_name", "docs"]]}
                 disabled={busy}
                 onSubmit={(data) => perform(
                   () => bindMCPTenantServer(selected.id, data.server_name),
-                  "Server bound to tenant."
+                  "服务已绑定到租户。"
                 )}
               />
             </Panel>
-            <Panel title="Repository scope" items={[]}>
+            <Panel title="仓库范围" items={[]}>
               <SimpleForm
-                fields={[["repo_id", "Repository UUID"]]}
+                fields={[["repo_id", "仓库 UUID"]]}
                 disabled={busy}
                 onSubmit={(data) => perform(
                   () => assignRepositoryToMCPTenant(selected.id, data.repo_id),
-                  "Repository assigned to tenant."
+                  "仓库已分配给租户。"
                 )}
               />
             </Panel>
           </section>
 
           <section className="rounded-lg border border-border bg-white p-5">
-            <h2 className="font-semibold">Access grants</h2>
-            <p className="mt-1 text-xs text-slate-500">Deny overrides allow; blank repo ID creates a tenant-wide grant.</p>
+            <h2 className="font-semibold">访问授权</h2>
+            <p className="mt-1 text-xs text-slate-500">拒绝规则优先于允许规则；仓库 ID 留空表示授权适用于整个租户。</p>
             <SimpleForm
               fields={[
                 ["principal_type", "agent"], ["principal_id", "codemate-agent"],
@@ -211,21 +211,21 @@ export default function MCPTenancyPage() {
                   repo_id: data.repo_id || null,
                   expires_at: null
                 }),
-                "Grant created."
+                "授权已创建。"
               )}
             />
             <div className="mt-4 space-y-2">
               {grants.map((grant) => (
                 <div key={grant.id} className="flex items-center justify-between gap-3 rounded border border-border p-3 text-sm">
                   <span>{grant.effect.toUpperCase()} {grant.principal_type}:{grant.principal_id} → {grant.server_name}.{grant.tool_name} [{grant.permissions.join(", ")}]</span>
-                  <button type="button" disabled={busy} onClick={() => void perform(() => deleteMCPAccessGrant(grant.id), "Grant deleted.")} className="text-red-700">Delete</button>
+                  <button type="button" disabled={busy} onClick={() => void perform(() => deleteMCPAccessGrant(grant.id), "授权已删除。")} className="text-red-700">删除</button>
                 </div>
               ))}
             </div>
           </section>
 
           <section className="grid gap-4 lg:grid-cols-2">
-            <Panel title="Delegated OAuth providers" items={providers.map((item) => `${item.server_name} · ${item.client_id}`)}>
+            <Panel title="委托 OAuth 服务商" items={providers.map((item) => `${item.server_name} · ${item.client_id}`)}>
               <SimpleForm
                 fields={[
                   ["server_name", "docs"], ["authorization_url", "https://idp.example.com/oauth/authorize"],
@@ -240,7 +240,7 @@ export default function MCPTenancyPage() {
                     client_secret: data.client_secret || null,
                     scopes: data.scopes.split(/[ ,]+/).filter(Boolean)
                   }),
-                  "OAuth provider configured."
+                  "OAuth 服务商已配置。"
                 )}
               />
               <div className="mt-3 flex flex-wrap gap-2">
@@ -248,19 +248,19 @@ export default function MCPTenancyPage() {
                   <button key={provider.id} type="button" disabled={busy} onClick={() => void perform(async () => {
                     const response = await startMCPDelegatedAuthorization(provider.id);
                     window.location.assign(response.authorization_url);
-                  }, "Redirecting to identity provider.")} className="rounded border border-border px-3 py-1 text-xs">
-                    Connect {provider.server_name}
+                  }, "正在跳转到身份提供方。")} className="rounded border border-border px-3 py-1 text-xs">
+                    连接 {provider.server_name}
                   </button>
                 ))}
               </div>
             </Panel>
-            <Panel title="Delegated identities" items={[]}>
+            <Panel title="委托身份" items={[]}>
               <div className="space-y-2">
                 {identities.map((identity) => (
                   <div key={identity.id} className="rounded border border-border p-3 text-sm">
                     <div>{identity.subject_provider}:{identity.subject} → {identity.server_name}</div>
-                    <div className="mt-1 text-xs text-slate-500">{identity.revoked ? "revoked" : `expires ${identity.expires_at ?? "unknown"}`}</div>
-                    {!identity.revoked ? <button type="button" disabled={busy} onClick={() => void perform(() => revokeMCPDelegatedIdentity(identity.id), "Delegated identity revoked.")} className="mt-2 text-xs text-red-700">Revoke</button> : null}
+                    <div className="mt-1 text-xs text-slate-500">{identity.revoked ? "revoked" : `到期时间 ${identity.expires_at ?? "unknown"}`}</div>
+                    {!identity.revoked ? <button type="button" disabled={busy} onClick={() => void perform(() => revokeMCPDelegatedIdentity(identity.id), "委托身份已撤销。")} className="mt-2 text-xs text-red-700">撤销</button> : null}
                   </div>
                 ))}
               </div>
@@ -294,7 +294,7 @@ function SimpleForm({ title, fields, disabled, onSubmit }: {
   return <form onSubmit={(event) => void submit(event)} className="space-y-2">
     {title ? <h2 className="font-semibold">{title}</h2> : null}
     {fields.map(([name, placeholder]) => <input key={name} name={name} required={placeholder !== ""} placeholder={placeholder || name} aria-label={name} className="w-full rounded-md border border-border px-3 py-2 text-sm" />)}
-    <button type="submit" disabled={disabled} className="rounded-md bg-slate-950 px-3 py-2 text-sm font-medium text-white disabled:bg-slate-400">Save</button>
+    <button type="submit" disabled={disabled} className="rounded-md bg-slate-950 px-3 py-2 text-sm font-medium text-white disabled:bg-slate-400">保存</button>
   </form>;
 }
 

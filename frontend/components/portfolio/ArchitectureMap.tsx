@@ -1,29 +1,29 @@
 const stages = [
   {
-    label: "Repository evidence",
-    detail: "AST chunks, citations, symbol and reference lookup",
+    label: "仓库证据",
+    detail: "AST 代码块、代码引用、符号与引用查询",
     accent: "bg-cyan-500"
   },
   {
-    label: "Controlled Agent Loop",
-    detail: "Schema-validated plans, budgets, checkpoints, reflection",
+    label: "受控 Agent 循环",
+    detail: "结构校验、预算、检查点与失败复盘",
     accent: "bg-violet-500"
   },
   {
-    label: "Isolated execution",
-    detail: "Patch apply, allowlisted commands, network-disabled tests",
+    label: "隔离执行",
+    detail: "应用补丁、命令白名单、禁网测试",
     accent: "bg-amber-500"
   },
   {
-    label: "Verification & gates",
-    detail: "Baseline, target and regression evidence; benchmark artifacts",
+    label: "验证与门禁",
+    detail: "修前、目标与回归测试证据；基准评测产物",
     accent: "bg-emerald-500"
   }
 ];
 
 export function ArchitectureMap() {
   return (
-    <ol className="grid gap-3 md:grid-cols-4" aria-label="CodeMate architecture">
+    <ol className="grid gap-3 md:grid-cols-4" aria-label="CodeMate 系统架构">
       {stages.map((stage, index) => (
         <li key={stage.label} className="relative rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           {index < stages.length - 1 ? (

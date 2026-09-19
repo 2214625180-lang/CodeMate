@@ -11,6 +11,7 @@ import httpx
 
 from app.core.config import settings
 from app.core.telemetry import operation_span, record_span_usage
+from app.sandbox.patches import InvalidUnifiedDiffError, normalize_unified_diff_hunks
 
 
 @dataclass(slots=True)
@@ -104,12 +105,39 @@ class SandboxService:
         if not diff.strip():
             return {"ok": False, "stdout": "", "stderr": "Empty patch"}
 
+        try:
+            normalized_patch = normalize_unified_diff_hunks(diff)
+        except InvalidUnifiedDiffError as exc:
+            return {
+                "ok": False,
+                "stdout": "",
+                "stderr": f"Invalid unified diff: {exc}",
+                "exit_code": 128,
+            }
+
         untracked_before, inventory_error = self._untracked_paths(workspace)
         if inventory_error:
             return {"ok": False, "stdout": "", "stderr": inventory_error, "exit_code": 1}
 
         patch_file = workspace / ".codemate.patch"
-        patch_file.write_text(diff, encoding="utf-8")
+        patch_file.write_text(normalized_patch.content, encoding="utf-8")
+        check_result = subprocess.run(
+            ["git", "-C", str(workspace), "apply", "--check", str(patch_file)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        if check_result.returncode != 0:
+            patch_file.unlink(missing_ok=True)
+            return {
+                "ok": False,
+                "stdout": check_result.stdout,
+                "stderr": check_result.stderr,
+                "exit_code": check_result.returncode,
+                "patch_normalized": normalized_patch.repaired_hunks > 0,
+            }
+
         result = subprocess.run(
             ["git", "-C", str(workspace), "apply", str(patch_file)],
             capture_output=True,
@@ -124,6 +152,7 @@ class SandboxService:
                 "stdout": result.stdout,
                 "stderr": result.stderr,
                 "exit_code": result.returncode,
+                "patch_normalized": normalized_patch.repaired_hunks > 0,
             }
 
         untracked_after, inventory_error = self._untracked_paths(workspace)
@@ -153,6 +182,7 @@ class SandboxService:
             "stdout": result.stdout,
             "stderr": result.stderr,
             "exit_code": 0,
+            "patch_normalized": normalized_patch.repaired_hunks > 0,
         }
 
     def _untracked_paths(self, workspace: Path) -> tuple[set[str], str | None]:

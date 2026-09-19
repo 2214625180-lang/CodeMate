@@ -17,8 +17,7 @@ class AgentAction(BaseModel):
 
     hypothesis: str = Field(min_length=1, max_length=2_000)
     rationale: str = Field(min_length=1, max_length=2_000)
-
-
+    
 class SearchCode(AgentAction):
     action: Literal["SearchCode"]
     query: str = Field(min_length=2, max_length=2_000)

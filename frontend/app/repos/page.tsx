@@ -18,7 +18,7 @@ export default function ReposPage() {
       setRepositories(data);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load repositories");
+      setError(err instanceof Error ? err.message : "加载仓库列表失败");
     } finally {
       setIsLoading(false);
     }
@@ -35,9 +35,9 @@ export default function ReposPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-950">Repositories</h1>
+        <h1 className="text-2xl font-semibold text-slate-950">仓库</h1>
         <p className="mt-2 text-sm text-slate-600">
-          Add a Git URL and watch the indexing status move through the Phase 1 pipeline.
+          添加 Git 仓库地址，查看克隆、解析和向量索引的进度。
         </p>
       </div>
 
@@ -51,7 +51,7 @@ export default function ReposPage() {
       {error ? <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
       {isLoading ? (
         <div className="rounded-lg border border-border bg-white p-5 text-sm text-slate-500">
-          Loading repositories...
+          正在加载仓库列表…
         </div>
       ) : (
         <RepoList repositories={repositories} />

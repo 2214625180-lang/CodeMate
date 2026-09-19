@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
       reason: "github_oauth_not_configured",
       ...requestAuditFields(request)
     });
-    return NextResponse.json({ detail: "GitHub OAuth is not configured" }, { status: 503 });
+    return NextResponse.json({ detail: "尚未配置 GitHub OAuth" }, { status: 503 });
   }
 
   const state = createOAuthState();

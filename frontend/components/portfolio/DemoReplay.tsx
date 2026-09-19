@@ -8,38 +8,38 @@ const TICK_INTERVAL_MS = 100;
 const replaySteps = [
   {
     id: "reproduce",
-    label: "Reproduce",
+    label: "复现问题",
     durationMs: 8_000,
     command: "npm run test:targeted",
-    result: "FAIL · -20 !== 0",
-    detail: "A fixed coupon makes the cart subtotal negative.",
+    result: "失败 · -20 !== 0",
+    detail: "固定优惠券使购物车折后小计变成负数。",
     tone: "rose"
   },
   {
     id: "investigate",
-    label: "Investigate",
+    label: "调查定位",
     durationMs: 9_000,
     command: "SearchCode → ReadFile → FindReferences",
-    result: "EVIDENCE · cart.js + checkout.js",
-    detail: "The agent follows the discounted subtotal into the checkout tax calculation.",
+    result: "证据 · cart.js + checkout.js",
+    detail: "Agent 沿折后小计的调用链定位到结算税费计算。",
     tone: "amber"
   },
   {
     id: "patch",
-    label: "Patch",
+    label: "补丁",
     durationMs: 9_000,
     command: "GeneratePatch → ApplyPatch",
-    result: "2 production files changed",
-    detail: "Clamp the coupon floor and calculate tax from the discounted subtotal.",
+    result: "修改了 2 个生产代码文件",
+    detail: "将折后小计下限设为 0，并按折后小计计算税费。",
     tone: "violet"
   },
   {
     id: "verify",
-    label: "Verify",
+    label: "验证修复",
     durationMs: 10_000,
-    command: "Targeted Tests → Regression Checks",
-    result: "VERIFIED_SUCCESS · 3/3 pass",
-    detail: "The run is successful only after the baseline, target, and regression evidence exists.",
+    command: "目标测试 → 回归测试",
+    result: "修复验证通过 · 3/3 通过",
+    detail: "只有修前失败、目标测试通过和回归测试通过的证据齐全，才判定修复成功。",
     tone: "emerald"
   }
 ] as const;
@@ -82,7 +82,7 @@ export function DemoReplay() {
 
   return (
     <section
-      aria-label="36-second guided sample run replay"
+      aria-label="36 秒示例运行引导回放"
       className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 shadow-2xl shadow-slate-950/20"
     >
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 px-4 py-3 sm:px-5">
@@ -90,10 +90,10 @@ export function DemoReplay() {
           <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_14px_rgba(74,222,128,0.9)]" />
           <div>
             <p className="font-mono text-xs font-semibold uppercase tracking-[0.18em] text-slate-200">
-              Guided sample replay
+              示例运行回放
             </p>
             <p className="mt-0.5 text-xs text-slate-400">
-              demo-cart-bug fixture · 36 second loop
+              demo-cart-bug 示例 · 36 秒循环
             </p>
           </div>
         </div>
@@ -104,14 +104,14 @@ export function DemoReplay() {
             onClick={() => setIsPlaying((current) => !current)}
             className="rounded-md border border-slate-700 px-2.5 py-1.5 text-xs font-medium text-slate-200 transition hover:border-slate-500 hover:bg-slate-800"
           >
-            {isPlaying ? "Pause" : "Play"}
+            {isPlaying ? "暂停" : "播放"}
           </button>
           <button
             type="button"
             onClick={restart}
             className="rounded-md px-2.5 py-1.5 text-xs font-medium text-slate-400 transition hover:bg-slate-800 hover:text-white"
           >
-            Replay
+            重新播放
           </button>
         </div>
       </div>
@@ -126,7 +126,7 @@ export function DemoReplay() {
       </div>
 
       <div className="grid gap-4 p-4 sm:p-5 lg:grid-cols-[0.9fr_1.1fr]">
-        <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1" aria-label="Replay phases">
+        <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1" aria-label="回放阶段">
           {replaySteps.map((step, index) => {
             const isActive = activeIndex === index;
             const isComplete = activeIndex > index;
@@ -167,8 +167,7 @@ export function DemoReplay() {
       </div>
 
       <p className="border-t border-slate-800 px-4 py-3 text-xs leading-5 text-slate-400 sm:px-5">
-        This replay is a guided rendering of the checked-in fixture contract, not a fabricated
-        production run. Start a real run from the sample button to inspect persisted evidence.
+        此回放根据仓库内置示例的验证规则展示流程，并非实际生产任务记录。点击示例按钮发起真实任务后，可查看已保存的执行证据。
       </p>
     </section>
   );
@@ -188,7 +187,7 @@ function ReplayConsole({ step }: { step: ReplayStep }) {
       <div className="relative">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="font-mono text-xs uppercase tracking-[0.16em] text-slate-500">
-            Agent timeline
+            Agent 执行时间线
           </span>
           <span className={`rounded-full border px-2.5 py-1 font-mono text-[11px] ${toneClasses[step.tone]}`}>
             {step.result}
@@ -207,7 +206,7 @@ function ReplayConsole({ step }: { step: ReplayStep }) {
             <>
               <p>evidence[0] src/cart.js · applyFixedCoupon</p>
               <p>evidence[1] src/checkout.js · quoteCheckout</p>
-              <p className="text-slate-500">hypothesis: tax must use discountedSubtotal</p>
+              <p className="text-slate-500">假设：税费必须基于 discountedSubtotal 计算</p>
             </>
           ) : null}
           {step.id === "patch" ? (

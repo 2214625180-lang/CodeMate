@@ -3,9 +3,9 @@ import Link from "next/link";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "CodeMate | Verifiable Code Repair Agent",
+  title: "CodeMate | 可验证的代码修复助手",
   description:
-    "A verifiable code repair agent for focused TypeScript and Python repositories."
+    "面向 TypeScript 和 Python 仓库的可验证代码修复助手。"
 };
 
 export default function RootLayout({
@@ -24,13 +24,13 @@ export default function RootLayout({
               </Link>
               <nav className="flex items-center gap-4 text-sm text-slate-600">
                 <Link href="/repos" className="hover:text-slate-950">
-                  Fix Agent
+                  代码修复
                 </Link>
                 <Link href="/evaluations" className="hover:text-slate-950">
-                  Evaluation
+                  评测
                 </Link>
                 <Link href="/mcp-operations" className="hover:text-slate-950">
-                  Extensions
+                  扩展功能
                 </Link>
               </nav>
             </div>

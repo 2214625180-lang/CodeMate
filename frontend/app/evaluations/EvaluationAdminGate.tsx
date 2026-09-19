@@ -20,7 +20,7 @@ type SessionState = {
 
 export function EvaluationAdminGate({
   children,
-  label = "Evaluation Center"
+  label = "评测中心"
 }: {
   children: ReactNode;
   label?: string;
@@ -45,7 +45,7 @@ export function EvaluationAdminGate({
       setState(data);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to check admin session");
+      setError(err instanceof Error ? err.message : "检查管理员会话失败");
     }
   }
 
@@ -63,12 +63,12 @@ export function EvaluationAdminGate({
         detail?: string;
       };
       if (!response.ok) {
-        throw new Error(data.detail || `Login failed with status ${response.status}`);
+        throw new Error(data.detail || `登录失败，状态码：${response.status}`);
       }
       setPassword("");
       setState(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : `Failed to unlock ${label}`);
+      setError(err instanceof Error ? err.message : `解锁失败：${label}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -82,7 +82,7 @@ export function EvaluationAdminGate({
   if (!state) {
     return (
       <section className="rounded-lg border border-border bg-white p-5 text-sm text-slate-500">
-        Loading {label}...
+        正在加载 {label}...
       </section>
     );
   }
@@ -90,8 +90,8 @@ export function EvaluationAdminGate({
   if (state.misconfigured) {
     return (
       <section className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
-        <h1 className="text-base font-semibold text-amber-950">{label} admin is not configured</h1>
-        <p className="mt-2">{state.detail ?? "Check the frontend authentication environment."}</p>
+        <h1 className="text-base font-semibold text-amber-950">{label} 尚未配置管理员</h1>
+        <p className="mt-2">{state.detail ?? "请检查前端身份验证环境配置。"}</p>
       </section>
     );
   }
@@ -100,16 +100,16 @@ export function EvaluationAdminGate({
     if (state.authMode === "github") {
       return (
         <section className="mx-auto max-w-md rounded-lg border border-border bg-white p-5">
-          <h1 className="text-lg font-semibold text-slate-950">{label} Admin</h1>
+          <h1 className="text-lg font-semibold text-slate-950">{label} 管理员</h1>
           <p className="mt-2 text-sm text-slate-600">
-            Sign in with GitHub to continue.
+            请使用 GitHub 登录以继续。
           </p>
           {error ? <p className="mt-4 text-sm text-red-700">{error}</p> : null}
           <a
             href="/api/auth/github/start"
             className="mt-5 block rounded-md bg-slate-950 px-3 py-2 text-center text-sm font-medium text-white hover:bg-slate-800"
           >
-            Continue with GitHub
+            使用 GitHub 登录
           </a>
         </section>
       );
@@ -117,11 +117,11 @@ export function EvaluationAdminGate({
 
     return (
       <section className="mx-auto max-w-md rounded-lg border border-border bg-white p-5">
-        <h1 className="text-lg font-semibold text-slate-950">{label} Admin</h1>
+        <h1 className="text-lg font-semibold text-slate-950">{label} 管理员</h1>
         <form className="mt-5 space-y-4" onSubmit={submit}>
           <div>
             <label htmlFor="evaluation-admin-password" className="text-sm font-medium text-slate-700">
-              Admin password
+              管理员密码
             </label>
             <input
               id="evaluation-admin-password"
@@ -138,7 +138,7 @@ export function EvaluationAdminGate({
             disabled={isSubmitting || !password}
             className="w-full rounded-md bg-slate-950 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
           >
-            {isSubmitting ? "Unlocking..." : "Unlock"}
+            {isSubmitting ? "正在解锁…" : "解锁"}
           </button>
         </form>
       </section>
@@ -150,7 +150,7 @@ export function EvaluationAdminGate({
       {state.authRequired ? (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-white px-4 py-3 text-sm text-slate-600">
           <span>
-            {state.user?.login ?? "Evaluation user"} · {state.role ?? "viewer"}
+            {state.user?.login ?? "评测用户"} · {state.role ?? "viewer"}
           </span>
           <div className="flex flex-wrap gap-2">
             {state.role === "admin" ? (
@@ -158,7 +158,7 @@ export function EvaluationAdminGate({
                 href="/evaluations/security"
                 className="rounded-md border border-border px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
               >
-                Security Log
+                安全日志
               </Link>
             ) : null}
             <button
@@ -166,7 +166,7 @@ export function EvaluationAdminGate({
               onClick={() => void signOut()}
               className="rounded-md border border-border px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
-              Sign out
+              退出登录
             </button>
           </div>
         </div>

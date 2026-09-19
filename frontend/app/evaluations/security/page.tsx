@@ -22,12 +22,12 @@ export default function EvaluationSecurityLogPage() {
         detail?: string;
       };
       if (!response.ok) {
-        throw new Error(data.detail || `Request failed with status ${response.status}`);
+        throw new Error(data.detail || `请求失败，状态码：${response.status}`);
       }
       setEvents(data.events ?? []);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load security events");
+      setError(err instanceof Error ? err.message : "加载安全事件失败");
     } finally {
       setIsLoading(false);
     }
@@ -41,10 +41,10 @@ export default function EvaluationSecurityLogPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-medium uppercase text-slate-500">Security</p>
-          <h1 className="mt-2 text-2xl font-semibold text-slate-950">Security Event Log</h1>
+          <p className="text-sm font-medium uppercase text-slate-500">安全</p>
+          <h1 className="mt-2 text-2xl font-semibold text-slate-950">安全事件日志</h1>
           <p className="mt-2 max-w-3xl text-sm text-slate-600">
-            Review Evaluation Center authentication, RBAC, proxy, and audit-read events.
+            查看评测中心的身份验证、RBAC、代理和审计读取事件。
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -52,14 +52,14 @@ export default function EvaluationSecurityLogPage() {
             href="/evaluations"
             className="rounded-md border border-border px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
-            Evaluation Center
+            评测中心
           </Link>
           <button
             type="button"
             onClick={() => void loadEvents()}
             className="rounded-md bg-slate-950 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
           >
-            Refresh
+            刷新
           </button>
         </div>
       </div>
@@ -67,7 +67,7 @@ export default function EvaluationSecurityLogPage() {
       <section className="rounded-lg border border-border bg-white p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <label className="text-sm font-medium text-slate-700" htmlFor="security-limit">
-            Recent events
+            最近事件
           </label>
           <select
             id="security-limit"
@@ -86,20 +86,20 @@ export default function EvaluationSecurityLogPage() {
         {error ? <div className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
 
         {isLoading ? (
-          <div className="mt-4 text-sm text-slate-500">Loading security events...</div>
+          <div className="mt-4 text-sm text-slate-500">正在加载安全事件…</div>
         ) : events.length === 0 ? (
-          <div className="mt-4 text-sm text-slate-500">No security events recorded yet.</div>
+          <div className="mt-4 text-sm text-slate-500">暂无安全事件。</div>
         ) : (
           <div className="mt-4 overflow-x-auto">
             <table className="min-w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-border text-xs uppercase text-slate-500">
-                  <th className="py-2 pr-4 font-medium">Time</th>
-                  <th className="py-2 pr-4 font-medium">Event</th>
-                  <th className="py-2 pr-4 font-medium">Outcome</th>
-                  <th className="py-2 pr-4 font-medium">Actor</th>
-                  <th className="py-2 pr-4 font-medium">Request</th>
-                  <th className="py-2 pr-4 font-medium">Reason</th>
+                  <th className="py-2 pr-4 font-medium">时间</th>
+                  <th className="py-2 pr-4 font-medium">事件</th>
+                  <th className="py-2 pr-4 font-medium">结果</th>
+                  <th className="py-2 pr-4 font-medium">操作者</th>
+                  <th className="py-2 pr-4 font-medium">请求</th>
+                  <th className="py-2 pr-4 font-medium">原因</th>
                 </tr>
               </thead>
               <tbody>

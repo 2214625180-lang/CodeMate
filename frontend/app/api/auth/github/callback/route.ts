@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
       reason: "github_oauth_not_configured",
       ...requestAuditFields(request)
     });
-    return redirectWithError(request, "GitHub OAuth is not configured");
+    return redirectWithError(request, "尚未配置 GitHub OAuth");
   }
 
   const url = request.nextUrl;
@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
       reason: oauthError,
       ...requestAuditFields(request)
     });
-    return redirectWithError(request, "GitHub OAuth was not authorized");
+    return redirectWithError(request, "GitHub OAuth 未获得授权");
   }
 
   const code = url.searchParams.get("code");
@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
       reason: "invalid_oauth_state",
       ...requestAuditFields(request)
     });
-    return redirectWithError(request, "Invalid GitHub OAuth state");
+    return redirectWithError(request, "GitHub OAuth 状态无效");
   }
 
   try {
@@ -86,7 +86,7 @@ export async function GET(request: NextRequest) {
         },
         ...requestAuditFields(request)
       });
-      return redirectWithError(request, "Your GitHub account is not allowed to access CodeMate evaluations");
+      return redirectWithError(request, "你的 GitHub 账号无权访问 CodeMate 评测中心");
     }
 
     await auditSecurityEvent({
@@ -139,7 +139,7 @@ export async function GET(request: NextRequest) {
     });
     return redirectWithError(
       request,
-      error instanceof Error ? error.message : "GitHub OAuth login failed"
+      error instanceof Error ? error.message : "GitHub OAuth 登录失败"
     );
   }
 }

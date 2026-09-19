@@ -29,7 +29,7 @@ export function AgentTimeline({
   if (events.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-border bg-white p-5 text-sm text-slate-500">
-        No trace events yet.
+        暂无执行轨迹。
       </div>
     );
   }
@@ -40,7 +40,7 @@ export function AgentTimeline({
         <article key={event.id} className="rounded-lg border border-border bg-white p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-xs uppercase text-slate-500">Step {index + 1}</p>
+              <p className="text-xs uppercase text-slate-500">步骤 {index + 1}</p>
               <h3 className="mt-1 text-sm font-semibold text-slate-950">
                 {titleFor(event)}
               </h3>
@@ -68,63 +68,63 @@ export function AgentTimeline({
 
 function titleFor(event: TraceEvent) {
   if (event.type === "agent_plan") {
-    return `Plan Next Action · ${readPlannedAction(event.output) ?? "planner"}`;
+    return `规划下一动作 · ${readPlannedAction(event.output) ?? "planner"}`;
   }
   if (event.type === "agent_observation") {
-    return `Agent Observation · ${event.tool_name ?? "local action"}`;
+    return `Agent 观察结果 · ${event.tool_name ?? "本地动作"}`;
   }
   if (event.type === "agent_guardrail") {
-    return `Guardrail · ${event.tool_name ?? "policy"}`;
+    return `策略约束 · ${event.tool_name ?? "policy"}`;
   }
   if (event.type === "checkpoint_resume") {
-    return "Resume From Checkpoint";
+    return "从检查点恢复";
   }
   if (event.type === "tool_call") {
-    return `Tool Call · ${event.tool_name ?? "unknown"}`;
+    return `工具调用 · ${event.tool_name ?? "unknown"}`;
   }
   if (event.type === "tool_result") {
-    return `Tool Result · ${event.tool_name ?? "unknown"}`;
+    return `工具结果 · ${event.tool_name ?? "unknown"}`;
   }
   if (event.type === "observation") {
-    return `Observation · ${event.tool_name ?? "agent"}`;
+    return `观察结果 · ${event.tool_name ?? "agent"}`;
   }
   if (event.type === "approval_required") {
-    return `Approval Required · ${event.tool_name ?? "MCP tool"}`;
+    return `等待审批 · ${event.tool_name ?? "MCP 工具"}`;
   }
   if (event.type === "approval_decision") {
-    return `Approval Decision · ${event.tool_name ?? "MCP tool"}`;
+    return `审批决定 · ${event.tool_name ?? "MCP 工具"}`;
   }
   if (event.type === "mcp_execution") {
-    return `MCP Execution · ${event.tool_name ?? "MCP tool"}`;
+    return `MCP 执行 · ${event.tool_name ?? "MCP 工具"}`;
   }
   if (event.type === "patch") {
-    return "Patch";
+    return "补丁";
   }
   if (event.type === "inspection") {
-    return "Inspect Repository";
+    return "检查仓库";
   }
   if (event.type === "baseline_test_result") {
-    return "Reproduce Failure";
+    return "复现失败";
   }
   if (event.type === "targeted_test_result") {
-    return "Targeted Tests";
+    return "目标测试";
   }
   if (event.type === "regression_test_result") {
-    return "Regression Checks";
+    return "回归测试";
   }
   if (event.type === "test_result" || event.type === "verification") {
-    return event.type === "verification" ? "Verification Verdict" : "Test Result";
+    return event.type === "verification" ? "验证结论" : "测试结果";
   }
   if (event.type === "reflection") {
-    return "Reflection";
+    return "失败复盘";
   }
   if (event.type === "final") {
-    return "Final";
+    return "最终结果";
   }
   if (event.type === "error") {
-    return "Error";
+    return "错误";
   }
-  return "Plan";
+  return "计划";
 }
 
 function bodyFor(
@@ -213,12 +213,12 @@ function ExecutionCard({
         <div>
           <p className="text-sm font-semibold text-violet-950">{execution.qualified_name}</p>
           <p className="mt-1 text-xs text-violet-800">
-            Status: {execution.status} · Attempts: {execution.attempt_count} · Recoveries:{" "}
+            状态： {execution.status} · 尝试次数： {execution.attempt_count} · 恢复次数：{" "}
             {execution.recovery_count}
           </p>
         </div>
         <p className="font-mono text-xs text-violet-800">
-          Key {execution.idempotency_key.slice(0, 12)}…
+          幂等键 {execution.idempotency_key.slice(0, 12)}…
         </p>
       </div>
       <pre className="max-h-52 overflow-auto rounded bg-white/80 p-3 text-xs text-slate-700">
@@ -235,7 +235,7 @@ function ExecutionCard({
             onClick={() => onReconcile?.(execution, "confirm_succeeded")}
             className="rounded-md bg-emerald-700 px-3 py-2 text-sm font-medium text-white disabled:bg-slate-400"
           >
-            Confirm succeeded
+            确认成功
           </button>
           <button
             type="button"
@@ -243,7 +243,7 @@ function ExecutionCard({
             onClick={() => onReconcile?.(execution, "confirm_failed")}
             className="rounded-md border border-violet-300 bg-white px-3 py-2 text-sm font-medium text-violet-950 disabled:text-slate-400"
           >
-            Confirm failed
+            确认失败
           </button>
           {execution.retry_safe ? (
             <button
@@ -252,7 +252,7 @@ function ExecutionCard({
               onClick={() => onReconcile?.(execution, "retry")}
               className="rounded-md border border-violet-300 bg-white px-3 py-2 text-sm font-medium text-violet-950 disabled:text-slate-400"
             >
-              Retry with same key
+              使用相同幂等键重试
             </button>
           ) : null}
         </div>
@@ -280,18 +280,18 @@ function ApprovalCard({
         <div>
           <p className="text-sm font-semibold text-amber-950">{approval.qualified_name}</p>
           <p className="mt-1 text-xs text-amber-800">
-            Policy: {approval.policy_snapshot} · Status: {approval.status}
+            策略： {approval.policy_snapshot} · 状态： {approval.status}
           </p>
         </div>
         <p className="text-xs text-amber-800">
-          Expires {new Date(approval.expires_at).toLocaleString()}
+          到期时间 {new Date(approval.expires_at).toLocaleString()}
         </p>
       </div>
       <pre className="max-h-64 overflow-auto rounded bg-white/80 p-3 text-xs text-slate-700">
         <code>{JSON.stringify(approval.arguments, null, 2)}</code>
       </pre>
       {approval.decision_note ? (
-        <p className="text-xs text-amber-900">Note: {approval.decision_note}</p>
+        <p className="text-xs text-amber-900">备注： {approval.decision_note}</p>
       ) : null}
       {pending ? (
         <div className="flex flex-wrap gap-2">
@@ -301,7 +301,7 @@ function ApprovalCard({
             onClick={() => onDecision?.(approval, "approve")}
             className="rounded-md bg-emerald-700 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-400"
           >
-            {deciding ? "Submitting..." : "Approve and resume"}
+            {deciding ? "正在提交…" : "批准并继续"}
           </button>
           <button
             type="button"
@@ -309,13 +309,13 @@ function ApprovalCard({
             onClick={() => onDecision?.(approval, "reject")}
             className="rounded-md border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-amber-950 hover:bg-amber-100 disabled:cursor-not-allowed disabled:text-slate-400"
           >
-            Reject and resume
+            拒绝并继续
           </button>
         </div>
       ) : (
         <p className="text-xs font-medium text-amber-900">
-          Decision: {approval.decision ?? approval.status}
-          {approval.decided_by ? ` by ${approval.decided_by}` : ""}
+          审批决定： {approval.decision ?? approval.status}
+          {approval.decided_by ? `，操作者：${approval.decided_by}` : ""}
         </p>
       )}
     </div>

@@ -47,7 +47,7 @@ export default function RepoReviewPage() {
       const response = await reviewRepository(repoId, payload);
       setReview(response);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to review changes");
+      setError(err instanceof Error ? err.message : "审查修改失败");
     } finally {
       setIsReviewing(false);
     }
@@ -57,16 +57,16 @@ export default function RepoReviewPage() {
     <div className="space-y-6">
       <div>
         <Link href={`/repos/${repoId}`} className="text-sm text-slate-600 hover:text-slate-950">
-          Back to repository
+          返回仓库
         </Link>
-        <h1 className="mt-3 text-2xl font-semibold text-slate-950">PR Review</h1>
+        <h1 className="mt-3 text-2xl font-semibold text-slate-950">PR 代码审查</h1>
       </div>
 
       <form onSubmit={handleSubmit} className="rounded-lg border border-border bg-white p-5">
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label htmlFor="base-ref" className="text-sm font-medium text-slate-700">
-              Base ref
+              基线引用
             </label>
             <input
               id="base-ref"
@@ -78,7 +78,7 @@ export default function RepoReviewPage() {
           </div>
           <div>
             <label htmlFor="head-ref" className="text-sm font-medium text-slate-700">
-              Head ref
+              目标引用
             </label>
             <input
               id="head-ref"
@@ -102,13 +102,13 @@ export default function RepoReviewPage() {
         />
 
         <label htmlFor="question" className="mt-4 block text-sm font-medium text-slate-700">
-          Review focus
+          审查重点
         </label>
         <input
           id="question"
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
-          placeholder="Focus on correctness, tests, and security"
+          placeholder="重点检查正确性、测试和安全性"
           className="mt-2 min-h-10 w-full rounded-md border border-border px-3 text-sm outline-none focus:border-slate-500"
         />
 
@@ -118,7 +118,7 @@ export default function RepoReviewPage() {
             disabled={isReviewing}
             className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
           >
-            {isReviewing ? "Reviewing..." : "Run review"}
+            {isReviewing ? "正在审查…" : "开始审查"}
           </button>
         </div>
       </form>
@@ -129,17 +129,17 @@ export default function RepoReviewPage() {
         <section className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
           <div className="space-y-4">
             <section className="rounded-lg border border-border bg-white p-5">
-              <h2 className="text-lg font-semibold text-slate-950">Summary</h2>
+              <h2 className="text-lg font-semibold text-slate-950">摘要</h2>
               <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">
                 {review.summary}
               </p>
             </section>
 
             <section className="space-y-3">
-              <h2 className="text-lg font-semibold text-slate-950">Findings</h2>
+              <h2 className="text-lg font-semibold text-slate-950">发现的问题</h2>
               {review.findings.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-border bg-white p-5 text-sm text-slate-500">
-                  No findings returned.
+                  未返回问题。
                 </div>
               ) : (
                 review.findings.map((finding, index) => (
@@ -176,9 +176,9 @@ export default function RepoReviewPage() {
 
           <div className="space-y-4">
             <section className="rounded-lg border border-border bg-white p-5">
-              <h2 className="text-lg font-semibold text-slate-950">Changed files</h2>
+              <h2 className="text-lg font-semibold text-slate-950">变更文件</h2>
               {review.changed_files.length === 0 ? (
-                <p className="mt-3 text-sm text-slate-500">No changed files detected.</p>
+                <p className="mt-3 text-sm text-slate-500">未检测到变更文件。</p>
               ) : (
                 <ul className="mt-3 space-y-2">
                   {review.changed_files.map((file) => (
@@ -191,10 +191,10 @@ export default function RepoReviewPage() {
             </section>
 
             <section className="space-y-3">
-              <h2 className="text-lg font-semibold text-slate-950">Citations</h2>
+              <h2 className="text-lg font-semibold text-slate-950">代码引用</h2>
               {review.citations.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-border bg-white p-5 text-sm text-slate-500">
-                  No citations returned.
+                  未返回引用。
                 </div>
               ) : (
                 review.citations.map((citation) => (

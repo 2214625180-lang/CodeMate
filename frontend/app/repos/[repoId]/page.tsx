@@ -50,7 +50,7 @@ export default function RepoDetailPage() {
       }
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load repository");
+      setError(err instanceof Error ? err.message : "加载仓库失败");
     }
   }, [repoId]);
 
@@ -76,7 +76,7 @@ export default function RepoDetailPage() {
     }
 
     setInsightError(
-      failures.length > 0 ? `Failed to load ${failures.join(" and ")} data` : null
+      failures.length > 0 ? `加载失败：${failures.join(" 和 ")} 数据` : null
     );
   }, [repoId]);
 
@@ -107,7 +107,7 @@ export default function RepoDetailPage() {
       setCIConfig(null);
       await loadRepository();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to trigger reindex");
+      setError(err instanceof Error ? err.message : "触发重新索引失败");
     } finally {
       setIsReindexing(false);
     }
@@ -120,7 +120,7 @@ export default function RepoDetailPage() {
       const nextMemory = await refreshRepoMemory(repoId);
       setMemory(nextMemory);
     } catch (err) {
-      setInsightError(err instanceof Error ? err.message : "Failed to refresh memory");
+      setInsightError(err instanceof Error ? err.message : "刷新仓库记忆失败");
     } finally {
       setIsRefreshingMemory(false);
     }
@@ -133,7 +133,7 @@ export default function RepoDetailPage() {
       const nextConfig = await writeCIWorkflow(repoId);
       setCIConfig(nextConfig);
     } catch (err) {
-      setInsightError(err instanceof Error ? err.message : "Failed to write CI workflow");
+      setInsightError(err instanceof Error ? err.message : "写入 CI 工作流失败");
     } finally {
       setIsWritingCI(false);
     }
@@ -146,7 +146,7 @@ export default function RepoDetailPage() {
   if (!repository || !status) {
     return (
       <div className="rounded-lg border border-border bg-white p-5 text-sm text-slate-500">
-        Loading repository...
+        正在加载仓库…
       </div>
     );
   }
@@ -154,7 +154,7 @@ export default function RepoDetailPage() {
   return (
     <div className="space-y-6">
       <Link href="/repos" className="text-sm text-slate-600 hover:text-slate-950">
-        Back to repositories
+        返回仓库列表
       </Link>
 
       <section className="rounded-lg border border-border bg-white p-6">
@@ -171,19 +171,19 @@ export default function RepoDetailPage() {
               href={`/repos/${repoId}/chat`}
               className="rounded-md border border-border px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
-              Chat
+              问答
             </Link>
             <Link
               href={`/repos/${repoId}/fix`}
               className="rounded-md border border-border px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
-              Fix
+              修复
             </Link>
             <Link
               href={`/repos/${repoId}/review`}
               className="rounded-md border border-border px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
-              Review
+              代码审查
             </Link>
             <button
               type="button"
@@ -191,7 +191,7 @@ export default function RepoDetailPage() {
               disabled={isReindexing}
               className="rounded-md border border-border px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
             >
-              {isReindexing ? "Queued..." : "Incremental reindex"}
+              {isReindexing ? "已入队…" : "增量重新索引"}
             </button>
           </div>
         </div>
@@ -203,15 +203,15 @@ export default function RepoDetailPage() {
         ) : null}
 
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          <Metric label="Source files" value={String(status.file_count)} />
-          <Metric label="Code chunks" value={String(status.chunk_count)} />
-          <Metric label="Commit" value={repository.last_commit_hash?.slice(0, 12) ?? "n/a"} />
+          <Metric label="源文件" value={String(status.file_count)} />
+          <Metric label="代码块" value={String(status.chunk_count)} />
+          <Metric label="提交" value={repository.last_commit_hash?.slice(0, 12) ?? "n/a"} />
           <Metric
-            label="Indexed at"
+            label="索引时间"
             value={repository.indexed_at ? new Date(repository.indexed_at).toLocaleString() : "n/a"}
           />
           <Metric
-            label="Workspace"
+            label="工作区"
             value={repository.status === "indexed" ? "ready" : repository.status}
           />
         </div>
@@ -237,9 +237,9 @@ export default function RepoDetailPage() {
       </section>
 
       <section className="rounded-lg border border-border bg-white p-6">
-        <h2 className="text-lg font-semibold text-slate-950">Language summary</h2>
+        <h2 className="text-lg font-semibold text-slate-950">语言分布</h2>
         {languageEntries.length === 0 ? (
-          <p className="mt-3 text-sm text-slate-500">No scanned source files yet.</p>
+          <p className="mt-3 text-sm text-slate-500">暂无已扫描的源文件。</p>
         ) : (
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
             {languageEntries.map(([language, count]) => (
@@ -280,9 +280,9 @@ function RepoMemoryPanel({
     <section className="rounded-lg border border-border bg-white p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-slate-950">Repo Memory</h2>
+          <h2 className="text-lg font-semibold text-slate-950">仓库记忆</h2>
           <p className="mt-1 text-xs text-slate-500">
-            {memory?.updated_at ? new Date(memory.updated_at).toLocaleString() : "Not refreshed"}
+            {memory?.updated_at ? new Date(memory.updated_at).toLocaleString() : "尚未刷新"}
           </p>
         </div>
         <button
@@ -291,26 +291,26 @@ function RepoMemoryPanel({
           disabled={!isIndexed || isRefreshing}
           className="rounded-md border border-border px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
         >
-          {isRefreshing ? "Refreshing..." : "Refresh"}
+          {isRefreshing ? "正在刷新…" : "刷新"}
         </button>
       </div>
 
       {!isIndexed ? (
-        <p className="mt-4 text-sm text-slate-500">Available after indexing completes.</p>
+        <p className="mt-4 text-sm text-slate-500">索引完成后可用。</p>
       ) : memory ? (
         <div className="mt-5 space-y-5">
-          <p className="text-sm leading-6 text-slate-700">{memory.summary ?? "No summary yet."}</p>
+          <p className="text-sm leading-6 text-slate-700">{memory.summary ?? "暂无摘要。"}</p>
 
           <div>
-            <h3 className="text-sm font-semibold text-slate-900">Modules</h3>
+            <h3 className="text-sm font-semibold text-slate-900">模块</h3>
             {modules.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-500">No module data.</p>
+              <p className="mt-2 text-sm text-slate-500">暂无模块数据。</p>
             ) : (
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 {modules.slice(0, 8).map((module) => (
                   <div key={module.path} className="rounded-md border border-border p-3">
                     <p className="truncate font-mono text-xs text-slate-700">{module.path}</p>
-                    <p className="mt-1 text-xs text-slate-500">{module.file_count} files</p>
+                    <p className="mt-1 text-xs text-slate-500">{module.file_count} 个文件</p>
                   </div>
                 ))}
               </div>
@@ -318,7 +318,7 @@ function RepoMemoryPanel({
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold text-slate-900">Stack</h3>
+            <h3 className="text-sm font-semibold text-slate-900">技术栈</h3>
             <div className="mt-2 flex flex-wrap gap-2">
               {stackDependencies.map((dependency) => (
                 <span
@@ -329,15 +329,15 @@ function RepoMemoryPanel({
                 </span>
               ))}
               {stackDependencies.length === 0 ? (
-                <span className="text-sm text-slate-500">No dependency data.</span>
+                <span className="text-sm text-slate-500">暂无依赖数据。</span>
               ) : null}
             </div>
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold text-slate-900">Key files</h3>
+            <h3 className="text-sm font-semibold text-slate-900">关键文件</h3>
             {keyFiles.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-500">No key files detected.</p>
+              <p className="mt-2 text-sm text-slate-500">未检测到关键文件。</p>
             ) : (
               <ul className="mt-2 divide-y divide-border border-y border-border">
                 {keyFiles.slice(0, 6).map((file) => (
@@ -353,9 +353,9 @@ function RepoMemoryPanel({
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold text-slate-900">Symbols</h3>
+            <h3 className="text-sm font-semibold text-slate-900">符号</h3>
             {symbols.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-500">No symbol memory.</p>
+              <p className="mt-2 text-sm text-slate-500">暂无符号记忆。</p>
             ) : (
               <ul className="mt-2 space-y-2">
                 {symbols.slice(0, 6).map((symbol) => (
@@ -369,7 +369,7 @@ function RepoMemoryPanel({
           </div>
         </div>
       ) : (
-        <p className="mt-4 text-sm text-slate-500">Loading memory...</p>
+        <p className="mt-4 text-sm text-slate-500">正在加载仓库记忆…</p>
       )}
     </section>
   );
@@ -392,7 +392,7 @@ function CIPanel({
         <div>
           <h2 className="text-lg font-semibold text-slate-950">CI</h2>
           <p className="mt-1 text-xs text-slate-500">
-            {config?.workflow_path ?? "No workflow generated"}
+            {config?.workflow_path ?? "尚未生成工作流"}
           </p>
         </div>
         <button
@@ -401,29 +401,29 @@ function CIPanel({
           disabled={!isIndexed || !config || isWriting}
           className="rounded-md border border-border px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
         >
-          {isWriting ? "Writing..." : "Write workflow"}
+          {isWriting ? "正在写入…" : "写入工作流"}
         </button>
       </div>
 
       {!isIndexed ? (
-        <p className="mt-4 text-sm text-slate-500">Available after indexing completes.</p>
+        <p className="mt-4 text-sm text-slate-500">索引完成后可用。</p>
       ) : config ? (
         <div className="mt-5 space-y-5">
           {config.applied_path ? (
             <div className="rounded-md bg-emerald-50 p-3 text-sm text-emerald-800">
-              Wrote {config.applied_path}
+              已写入 {config.applied_path}
             </div>
           ) : null}
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <Metric label="Ecosystem" value={config.ecosystem.join(", ")} />
-            <Metric label="Package manager" value={config.package_manager ?? "n/a"} />
+            <Metric label="技术生态" value={config.ecosystem.join(", ")} />
+            <Metric label="包管理器" value={config.package_manager ?? "n/a"} />
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold text-slate-900">Detected CI</h3>
+            <h3 className="text-sm font-semibold text-slate-900">已检测到的 CI</h3>
             {config.detected_configs.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-500">No existing CI config.</p>
+              <p className="mt-2 text-sm text-slate-500">暂无 CI 配置。</p>
             ) : (
               <ul className="mt-2 space-y-1">
                 {config.detected_configs.map((path) => (
@@ -436,7 +436,7 @@ function CIPanel({
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold text-slate-900">Test commands</h3>
+            <h3 className="text-sm font-semibold text-slate-900">测试命令</h3>
             <ul className="mt-2 space-y-1">
               {config.test_commands.map((command) => (
                 <li key={command} className="font-mono text-xs text-slate-700">
@@ -451,7 +451,7 @@ function CIPanel({
           </pre>
         </div>
       ) : (
-        <p className="mt-4 text-sm text-slate-500">Loading CI data...</p>
+        <p className="mt-4 text-sm text-slate-500">正在加载 CI 数据…</p>
       )}
     </section>
   );

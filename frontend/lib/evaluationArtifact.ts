@@ -4,45 +4,45 @@ export function renderEvaluationArtifactMarkdown(artifact: EvaluationRunArtifact
   const { run } = artifact;
   const summary = artifact.summary ?? {};
   const metrics = recordValue(summary.metrics) ?? run.metrics_json ?? {};
-  const title = run.name || run.id || "Evaluation Run";
+  const title = run.name || run.id || "评测运行";
 
   const lines = [
-    `# Evaluation Report: ${escapeMarkdown(title)}`,
+    `# 评测报告：${escapeMarkdown(title)}`,
     "",
-    "## Run Summary",
+    "## 运行摘要",
     "",
-    "| Field | Value |",
+    "| 字段 | 值 |",
     "| --- | --- |",
-    row("Run ID", run.id),
-    row("Task Type", run.task_type),
-    row("Status", run.status),
-    row("Dataset", datasetLabel(artifact)),
-    row("Dataset Snapshot", run.dataset_snapshot_id),
-    row("Created At", run.created_at),
-    row("Finished At", run.finished_at),
-    row("Cases", summary.cases ?? run.case_count),
-    row("Passed", summary.passed ?? run.passed_count),
-    row("Failed", summary.failed ?? run.failed_count),
-    row("Providers", joinValues(summary.providers)),
-    row("Models", joinValues(summary.models)),
+    row("运行 ID", run.id),
+    row("任务类型", run.task_type),
+    row("状态", run.status),
+    row("数据集", datasetLabel(artifact)),
+    row("数据集快照", run.dataset_snapshot_id),
+    row("创建时间", run.created_at),
+    row("完成时间", run.finished_at),
+    row("用例", summary.cases ?? run.case_count),
+    row("通过", summary.passed ?? run.passed_count),
+    row("失败", summary.failed ?? run.failed_count),
+    row("服务商", joinValues(summary.providers)),
+    row("模型", joinValues(summary.models)),
     "",
-    "## Metrics",
+    "## 指标",
     "",
     metricsTable(metrics),
     "",
-    "## Failure Distribution",
+    "## 失败分布",
     "",
     failureTable(recordValue(summary.failure_distribution) ?? recordValue(metrics.failure_distribution) ?? {}),
     "",
-    "## Cases",
+    "## 用例",
     "",
     casesTable(artifact.cases),
     "",
-    "## Agent Trace Summary",
+    "## Agent 执行轨迹摘要",
     "",
     agentTraceSummary(artifact.cases),
     "",
-    "## Config Snapshot",
+    "## 配置快照",
     "",
     codeBlock(run.config_snapshot),
     ""
@@ -63,11 +63,11 @@ function row(label: string, value: unknown) {
 function metricsTable(metrics: Record<string, unknown>) {
   const keys = Object.keys(metrics).filter((key) => key !== "failure_distribution").sort();
   if (keys.length === 0) {
-    return "_No metrics recorded._";
+    return "_暂无指标记录。_";
   }
 
   return [
-    "| Metric | Value |",
+    "| 指标 | 值 |",
     "| --- | --- |",
     ...keys.map((key) => row(metricLabel(key), formatMetric(key, metrics[key])))
   ].join("\n");
@@ -76,11 +76,11 @@ function metricsTable(metrics: Record<string, unknown>) {
 function failureTable(failures: Record<string, unknown>) {
   const entries = Object.entries(failures).sort(([left], [right]) => left.localeCompare(right));
   if (entries.length === 0) {
-    return "_No failures recorded._";
+    return "_暂无失败记录。_";
   }
 
   return [
-    "| Failure Category | Count |",
+    "| 失败类别 | 数量 |",
     "| --- | ---: |",
     ...entries.map(([category, count]) => `| ${escapeTable(category)} | ${escapeTable(count)} |`)
   ].join("\n");
@@ -88,11 +88,11 @@ function failureTable(failures: Record<string, unknown>) {
 
 function casesTable(cases: EvaluationArtifactCase[]) {
   if (cases.length === 0) {
-    return "_No case artifacts recorded._";
+    return "_暂无用例产物。_";
   }
 
   return [
-    "| Case | Status | Passed | Latency | Failure | Prompt | Result |",
+    "| 用例 | 状态 | 是否通过 | 耗时 | 失败原因 | 提示词 | 结果 |",
     "| --- | --- | --- | ---: | --- | --- | --- |",
     ...cases.map((item) =>
       [
@@ -115,11 +115,11 @@ function casesTable(cases: EvaluationArtifactCase[]) {
 function agentTraceSummary(cases: EvaluationArtifactCase[]) {
   const traces = cases.map((item) => item.agent_trace).filter((trace) => trace !== null);
   if (traces.length === 0) {
-    return "_No agent traces recorded for this evaluation run._";
+    return "_本次评测暂无 Agent 执行轨迹。_";
   }
 
   const table = [
-    "| Agent Run | Status | Iterations | Tool Calls | Test | Summary |",
+    "| Agent 运行 | 状态 | 迭代次数 | 工具调用次数 | 测试 | 摘要 |",
     "| --- | --- | ---: | ---: | --- | --- |",
     ...traces.map((trace) =>
       [
@@ -137,9 +137,9 @@ function agentTraceSummary(cases: EvaluationArtifactCase[]) {
 
   const stepCounts = [
     "",
-    "### Step Counts",
+    "### 步骤统计",
     "",
-    "| Agent Run | Step Counts |",
+    "| Agent 运行 | 步骤统计 |",
     "| --- | --- |",
     ...traces.map((trace) => `| ${escapeTable(trace.run_id)} | ${escapeTable(joinCounts(trace.steps_by_type))} |`)
   ];
@@ -154,12 +154,12 @@ function resultSummary(item: EvaluationArtifactCase) {
 
   if (item.task_type === "fix") {
     const parts = [
-      `agent=${formatValue(item.result_json.agent_status ?? "n/a")}`,
-      `calls=${formatValue(item.result_json.tool_calls ?? "n/a")}`,
-      `diff=${formatValue(item.result_json.final_diff_length ?? "n/a")}`
+      `Agent=${formatValue(item.result_json.agent_status ?? "n/a")}`,
+      `调用次数=${formatValue(item.result_json.tool_calls ?? "n/a")}`,
+      `Diff=${formatValue(item.result_json.final_diff_length ?? "n/a")}`
     ];
     if (item.result_json.error) {
-      parts.push(`error=${shortText(item.result_json.error, 60)}`);
+      parts.push(`错误=${shortText(item.result_json.error, 60)}`);
     }
     return parts.join(", ");
   }
@@ -167,11 +167,11 @@ function resultSummary(item: EvaluationArtifactCase) {
   if (Array.isArray(item.result_json.citations) && item.result_json.citations.length > 0) {
     const first = item.result_json.citations[0];
     if (isRecord(first)) {
-      return `top=${formatValue(first.file_path ?? "n/a")}, citations=${item.result_json.citations.length}`;
+      return `首个结果=${formatValue(first.file_path ?? "n/a")}，引用数=${item.result_json.citations.length}`;
     }
   }
   if (item.result_json.error) {
-    return `error=${shortText(item.result_json.error, 80)}`;
+    return `错误=${shortText(item.result_json.error, 80)}`;
   }
   return "n/a";
 }
@@ -185,13 +185,13 @@ function datasetLabel(artifact: EvaluationRunArtifact) {
 
 function metricLabel(key: string) {
   const labels: Record<string, string> = {
-    fix_success_rate: "Fix Success Rate",
-    final_verified_fix_rate: "Final Verified Fix Rate",
-    avg_latency_sec: "Avg Latency",
-    avg_tool_calls: "Avg Tool Calls",
-    passed: "Passed",
-    failed: "Failed",
-    cases: "Cases",
+    fix_success_rate: "修复成功率",
+    final_verified_fix_rate: "最终验证通过率",
+    avg_latency_sec: "平均耗时",
+    avg_tool_calls: "平均工具调用次数",
+    passed: "通过",
+    failed: "失败",
+    cases: "用例",
     top_k: "Top K"
   };
   return /^recall_at_\d+$/.test(key) ? `Recall@${key.replace("recall_at_", "")}` : labels[key] ?? key;
@@ -245,9 +245,9 @@ function testLabel(testResult: Record<string, unknown> | null) {
     return testResult.passed ? "passed" : "failed";
   }
   if (testResult.skipped_reason) {
-    return `skipped: ${formatValue(testResult.skipped_reason)}`;
+    return `已跳过：${formatValue(testResult.skipped_reason)}`;
   }
-  return "not run";
+  return "未运行";
 }
 
 function joinValues(value: unknown) {

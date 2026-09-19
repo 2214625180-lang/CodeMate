@@ -32,26 +32,26 @@ export function buildEvaluationBackfillReport(
 export function renderEvaluationBackfillReportMarkdown(report: EvaluationBackfillReport) {
   const { result, parameters } = report;
   return `${[
-    "# Dataset Snapshot Backfill Report",
+    "# 数据集快照回填报告",
     "",
-    "## Summary",
+    "## 摘要",
     "",
-    "| Field | Value |",
+    "| 字段 | 值 |",
     "| --- | --- |",
-    row("Generated At", report.generated_at),
-    row("Dataset", parameters.dataset_id ?? "all"),
-    row("Mode", result.dry_run ? "dry run" : "applied"),
-    row("Create Missing Snapshots", parameters.create_missing_snapshots),
-    row("Scanned Runs", result.scanned),
-    row("Backfilled Runs", result.backfilled),
-    row("Skipped Runs", result.skipped),
-    row("Created Snapshots", result.created_snapshots),
+    row("生成时间", report.generated_at),
+    row("数据集", parameters.dataset_id ?? "all"),
+    row("模式", result.dry_run ? "预演" : "applied"),
+    row("创建缺失快照", parameters.create_missing_snapshots),
+    row("已扫描运行", result.scanned),
+    row("已回填运行", result.backfilled),
+    row("已跳过运行", result.skipped),
+    row("新建快照", result.created_snapshots),
     "",
-    "## Status Counts",
+    "## 状态统计",
     "",
     statusCountsTable(result.status_counts),
     "",
-    "## Details",
+    "## 详情",
     "",
     detailsTable(result.details)
   ].join("\n").trim()}\n`;
@@ -66,10 +66,10 @@ export function backfillReportFilename(report: EvaluationBackfillReport, extensi
 function statusCountsTable(counts: Record<string, number>) {
   const entries = Object.entries(counts).sort(([left], [right]) => left.localeCompare(right));
   if (entries.length === 0) {
-    return "_No statuses recorded._";
+    return "_暂无状态记录。_";
   }
   return [
-    "| Status | Count |",
+    "| 状态 | 数量 |",
     "| --- | ---: |",
     ...entries.map(([status, count]) => `| ${escapeTable(status)} | ${count} |`)
   ].join("\n");
@@ -77,10 +77,10 @@ function statusCountsTable(counts: Record<string, number>) {
 
 function detailsTable(details: Record<string, unknown>[]) {
   if (details.length === 0) {
-    return "_No per-run details recorded._";
+    return "_暂无逐次运行详情。_";
   }
   return [
-    "| Run | Status | Dataset Version | Snapshot | Created Snapshot | Reason |",
+    "| 运行 | 状态 | 数据集版本 | 快照 | 是否创建快照 | 原因 |",
     "| --- | --- | ---: | --- | --- | --- |",
     ...details.slice(0, 50).map((item) =>
       [
@@ -93,7 +93,7 @@ function detailsTable(details: Record<string, unknown>[]) {
       ].join(" | ")
     ).map((line) => `| ${line} |`),
     ...(details.length > 50
-      ? [`| ... | truncated |  |  |  | ${details.length - 50} more details |`]
+      ? [`| ... | 已截断 |  |  |  | ${details.length - 50} 条更多详情 |`]
       : [])
   ].join("\n");
 }
