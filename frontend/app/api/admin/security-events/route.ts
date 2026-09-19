@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
       ...requestAuditFields(request)
     });
     return NextResponse.json(
-      { detail: state.detail ?? "Evaluation authentication is not configured correctly." },
+      { detail: state.detail ?? "评测身份验证配置不正确。" },
       { status: 503 }
     );
   }
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
       reason: "session_required",
       ...requestAuditFields(request)
     });
-    return NextResponse.json({ detail: "Evaluation session required" }, { status: 401 });
+    return NextResponse.json({ detail: "请先登录评测中心" }, { status: 401 });
   }
   if (!canMutateEvaluation(state)) {
     await auditSecurityEvent({
@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
       reason: "admin_role_required",
       ...requestAuditFields(request)
     });
-    return NextResponse.json({ detail: "Evaluation admin role required" }, { status: 403 });
+    return NextResponse.json({ detail: "此操作需要评测管理员权限" }, { status: 403 });
   }
 
   const limit = Number(request.nextUrl.searchParams.get("limit") || "100");

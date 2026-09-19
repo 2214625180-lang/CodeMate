@@ -63,6 +63,66 @@ def test_git_diff_includes_new_files_and_replays_complete_patch(monkeypatch, tmp
     assert (source / "new.txt").read_text(encoding="utf-8") == "new content\n"
 
 
+def test_apply_patch_repairs_demo_hunk_counts(monkeypatch, tmp_path: Path):
+    source = tmp_path / "source"
+    source.mkdir()
+    run_git(source, "init")
+    (source / "cart.js").write_text(
+        "export function coupon(subtotal, amount) {\n"
+        "  // Keep checkout totals valid.\n"
+        "  return subtotal - amount;\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    run_git(source, "add", "cart.js")
+    run_git(source, "commit", "-m", "baseline")
+    malformed_patch = """diff --git a/cart.js b/cart.js
+--- a/cart.js
++++ b/cart.js
+@@ -1,5 +1,5 @@
+ export function coupon(subtotal, amount) {
+   // Keep checkout totals valid.
+-  return subtotal - amount;
++  return Math.max(0, subtotal - amount);
+ }
+"""
+
+    monkeypatch.setattr(settings, "sandbox_workspace_dir", str(tmp_path / "sandboxes"))
+    workspace = SandboxService().create_workspace(run_id="run-malformed", source_path=str(source))
+
+    result = SandboxService().apply_patch(workspace=workspace, diff=malformed_patch)
+
+    assert result["ok"] is True
+    assert result["patch_normalized"] is True
+    assert "Math.max(0, subtotal - amount)" in (workspace / "cart.js").read_text(encoding="utf-8")
+
+
+def test_apply_patch_rejects_mismatched_hunk_that_may_be_truncated(monkeypatch, tmp_path: Path):
+    source = tmp_path / "source"
+    source.mkdir()
+    run_git(source, "init")
+    (source / "cart.js").write_text("const total = subtotal - amount;\n", encoding="utf-8")
+    run_git(source, "add", "cart.js")
+    run_git(source, "commit", "-m", "baseline")
+    truncated_patch = """diff --git a/cart.js b/cart.js
+--- a/cart.js
++++ b/cart.js
+@@ -1,2 +1,2 @@
+-const total = subtotal - amount;
++const total = Math.max(0, subtotal - amount);
+"""
+
+    monkeypatch.setattr(settings, "sandbox_workspace_dir", str(tmp_path / "sandboxes"))
+    workspace = SandboxService().create_workspace(run_id="run-truncated", source_path=str(source))
+
+    result = SandboxService().apply_patch(workspace=workspace, diff=truncated_patch)
+
+    assert result["ok"] is False
+    assert result["exit_code"] == 128
+    assert "may be truncated" in result["stderr"]
+    assert (workspace / "cart.js").read_text(encoding="utf-8") == "const total = subtotal - amount;\n"
+
+
 def run_git(
     repository: Path,
     *arguments: str,

@@ -214,6 +214,9 @@ def get_product_principal(
         expected_token,
     ):
         raise product_identity_required()
+    # Consume the nonce only after authenticating the signature. Invalid clients
+    # cannot fill the replay store with arbitrary nonce values. Store failure is
+    # fail-closed because replay protection is part of the trust boundary.
     try:
         nonce_consumed = consume_proxy_identity_nonce(f"product:{nonce}", ttl_seconds)
     except ReplayNonceStoreUnavailable as exc:
@@ -511,6 +514,8 @@ def product_identity_signature_payload(
     login: str,
     provider: str,
 ) -> str:
+    # Bind identity to the exact request. A signature captured from one method,
+    # path or query string cannot be replayed against another product endpoint.
     return "\n".join(
         [
             "v1",

@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         ...state,
-        detail: state.detail ?? "Evaluation authentication is not configured correctly."
+        detail: state.detail ?? "评测身份验证配置不正确。"
       },
       { status: 503 }
     );
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
       reason: "invalid_password",
       ...requestAuditFields(request)
     });
-    return NextResponse.json({ detail: "Invalid admin password" }, { status: 401 });
+    return NextResponse.json({ detail: "管理员密码不正确" }, { status: 401 });
   }
 
   await auditSecurityEvent({
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
     user: {
       provider: "password",
       login: "password-admin",
-      name: "Password Admin",
+      name: "密码登录管理员",
       avatarUrl: null
     }
   });

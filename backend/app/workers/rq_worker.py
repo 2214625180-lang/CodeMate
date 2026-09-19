@@ -1,7 +1,7 @@
 import time
 
 from redis import Redis
-from rq import Connection, Queue, Worker
+from rq import Worker
 
 from app.core.config import settings
 
@@ -25,16 +25,16 @@ class ObservableWorker(Worker):
 def main() -> None:
     settings.validate_security_config()
     redis_connection = Redis.from_url(settings.redis_url)
-    with Connection(redis_connection):
-        interval = settings.rq_worker_heartbeat_interval_seconds
-        worker = ObservableWorker(
-            [Queue(settings.rq_queue_name)],
-            heartbeat_prefix=settings.rq_worker_heartbeat_prefix,
-            heartbeat_ttl=settings.rq_worker_heartbeat_ttl_seconds,
-            default_worker_ttl=interval + 15,
-            job_monitoring_interval=interval,
-        )
-        worker.work(with_scheduler=True)
+    interval = settings.rq_worker_heartbeat_interval_seconds
+    worker = ObservableWorker(
+        [settings.rq_queue_name],
+        connection=redis_connection,
+        heartbeat_prefix=settings.rq_worker_heartbeat_prefix,
+        heartbeat_ttl=settings.rq_worker_heartbeat_ttl_seconds,
+        default_worker_ttl=interval + 15,
+        job_monitoring_interval=interval,
+    )
+    worker.work(with_scheduler=True)
 
 
 if __name__ == "__main__":

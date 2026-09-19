@@ -24,7 +24,11 @@ from app.models.agent_checkpoint import (
 
 
 class SQLAlchemyCheckpointSaver(BaseCheckpointSaver):
-    """LangGraph checkpointer backed by the application's transactional database."""
+    """LangGraph machine-state persistence keyed by ``AgentRun.id``.
+
+    Checkpoints, channel blobs and pending writes support deterministic recovery;
+    they are distinct from the redacted, human-readable AgentStep timeline.
+    """
 
     def __init__(self, session_factory: sessionmaker):
         super().__init__()

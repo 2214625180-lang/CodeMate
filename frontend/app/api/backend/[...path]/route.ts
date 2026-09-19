@@ -20,6 +20,9 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// Connection-specific headers must not cross proxy boundaries. Fetch may also
+// decode a body before this handler sees it, making stale length/encoding values
+// unsafe for streamed responses.
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",
   "content-encoding",
@@ -91,7 +94,7 @@ async function proxyBackend(request: NextRequest, context: RouteContext) {
       });
       return NextResponse.json(
         {
-          detail: state.detail ?? "CodeMate authentication is not configured correctly."
+          detail: state.detail ?? "CodeMate 身份验证配置不正确。"
         },
         { status: 503 }
       );
@@ -107,7 +110,7 @@ async function proxyBackend(request: NextRequest, context: RouteContext) {
         reason: "session_required",
         ...requestAuditFields(request)
       });
-      return NextResponse.json({ detail: "CodeMate session required" }, { status: 401 });
+      return NextResponse.json({ detail: "请先登录 CodeMate" }, { status: 401 });
     }
     if (
       evaluationPath &&
@@ -125,13 +128,16 @@ async function proxyBackend(request: NextRequest, context: RouteContext) {
         reason: "admin_role_required",
         ...requestAuditFields(request)
       });
-      return NextResponse.json({ detail: "Evaluation admin role required" }, { status: 403 });
+      return NextResponse.json({ detail: "此操作需要评测管理员权限" }, { status: 403 });
     }
   }
 
   const targetUrl = new URL(`${backendBaseUrl()}${backendPath}`);
   targetUrl.search = request.nextUrl.search;
 
+  // Rebuild the upstream header set instead of forwarding browser headers.
+  // Product/evaluation tokens and signed identity exist only in this server-side
+  // BFF boundary; clients cannot choose the owner headers seen by the backend.
   const headers = new Headers();
   const accept = request.headers.get("accept");
   const contentType = request.headers.get("content-type");
@@ -182,6 +188,9 @@ async function proxyBackend(request: NextRequest, context: RouteContext) {
       headers.set("authorization", `Bearer ${productToken}`);
     }
     if (sessionState?.user) {
+      // The backend signs the exact method + path/query tuple and consumes the
+      // nonce once, preventing this identity assertion from authorizing another
+      // request if it is captured or replayed.
       const timestamp = Math.floor(Date.now() / 1000).toString();
       const nonce = randomBytes(24).toString("base64url");
       const pathWithQuery = `${backendPath}${request.nextUrl.search}`;
@@ -226,6 +235,8 @@ async function proxyBackend(request: NextRequest, context: RouteContext) {
     });
   }
   const responseHeaders = filteredResponseHeaders(response.headers);
+  // Do not buffer the upstream body: SSE frames should reach the browser as the
+  // backend emits them, while the same proxy still enforces identity signing.
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,

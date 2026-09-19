@@ -20,7 +20,7 @@ export function ArtifactPreviewClient({ runId }: { runId: string }) {
   const loadArtifact = useCallback(async () => {
     if (!runId) {
       setIsLoading(false);
-      setError("Missing runId query parameter.");
+      setError("缺少 runId 查询参数。");
       return;
     }
     try {
@@ -28,7 +28,7 @@ export function ArtifactPreviewClient({ runId }: { runId: string }) {
       setArtifact(data);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load evaluation artifact");
+      setError(err instanceof Error ? err.message : "加载评测产物失败");
     } finally {
       setIsLoading(false);
     }
@@ -55,12 +55,12 @@ export function ArtifactPreviewClient({ runId }: { runId: string }) {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-medium uppercase text-slate-500">Evaluation Artifact</p>
+          <p className="text-sm font-medium uppercase text-slate-500">评测产物</p>
           <h1 className="mt-2 text-2xl font-semibold text-slate-950">
-            {artifact?.run.name || artifact?.run.id || runId || "Artifact Preview"}
+            {artifact?.run.name || artifact?.run.id || runId || "产物预览"}
           </h1>
           <p className="mt-2 max-w-3xl text-sm text-slate-600">
-            Markdown preview generated from the persisted evaluation run artifact.
+            根据已保存的评测运行产物生成的 Markdown 预览。
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -68,7 +68,7 @@ export function ArtifactPreviewClient({ runId }: { runId: string }) {
             href="/evaluations"
             className="rounded-md border border-border px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
-            Evaluation Center
+            评测中心
           </Link>
           <button
             type="button"
@@ -76,7 +76,7 @@ export function ArtifactPreviewClient({ runId }: { runId: string }) {
             onClick={() => download("json")}
             className="rounded-md border border-border px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
           >
-            Export JSON
+            导出 JSON
           </button>
           <button
             type="button"
@@ -84,7 +84,7 @@ export function ArtifactPreviewClient({ runId }: { runId: string }) {
             onClick={() => download("markdown")}
             className="rounded-md bg-slate-950 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
           >
-            Export Markdown
+            导出 Markdown
           </button>
         </div>
       </div>
@@ -93,14 +93,14 @@ export function ArtifactPreviewClient({ runId }: { runId: string }) {
 
       {isLoading ? (
         <section className="rounded-lg border border-border bg-white p-5 text-sm text-slate-500">
-          Loading artifact...
+          正在加载产物…
         </section>
       ) : artifact ? (
         <section className="rounded-lg border border-border bg-white p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold text-slate-950">Markdown Report</h2>
+            <h2 className="text-lg font-semibold text-slate-950">Markdown 报告</h2>
             <span className="text-xs text-slate-500">
-              {artifact.run.task_type} · {artifact.run.status} · {artifact.cases.length} cases
+              {artifact.run.task_type} · {artifact.run.status} · {artifact.cases.length} 个用例
             </span>
           </div>
           <pre className="mt-4 max-h-[760px] overflow-auto rounded-md bg-slate-950 p-4 text-xs leading-5 text-slate-100">

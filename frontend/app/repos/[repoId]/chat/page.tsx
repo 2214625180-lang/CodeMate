@@ -43,7 +43,7 @@ export default function RepoChatPage() {
       });
 
       if (!response.ok || !response.body) {
-        throw new Error(`Chat request failed with status ${response.status}`);
+        throw new Error(`问答请求失败，状态码：${response.status}`);
       }
 
       await readSse(response.body, (message) => {
@@ -56,7 +56,7 @@ export default function RepoChatPage() {
         }
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Chat request failed");
+      setError(err instanceof Error ? err.message : "问答请求失败");
     } finally {
       setIsStreaming(false);
     }
@@ -67,19 +67,18 @@ export default function RepoChatPage() {
       <div className="flex items-center justify-between gap-4">
         <div>
           <Link href={`/repos/${repoId}`} className="text-sm text-slate-600 hover:text-slate-950">
-            Back to repository
+            返回仓库
           </Link>
-          <h1 className="mt-3 text-2xl font-semibold text-slate-950">Code Q&A</h1>
+          <h1 className="mt-3 text-2xl font-semibold text-slate-950">代码问答</h1>
           <p className="mt-2 text-sm text-slate-600">
-            Ask about the indexed repository. Answers are constrained to retrieved chunks and
-            citations.
+            针对已索引的仓库提问，回答以检索到的代码块和引用为依据。
           </p>
         </div>
       </div>
 
       <form onSubmit={handleSubmit} className="rounded-lg border border-border bg-white p-5">
         <label htmlFor="question" className="text-sm font-medium text-slate-700">
-          Question
+          问题
         </label>
         <textarea
           id="question"
@@ -95,7 +94,7 @@ export default function RepoChatPage() {
             disabled={isStreaming}
             className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
           >
-            {isStreaming ? "Streaming..." : "Ask"}
+            {isStreaming ? "正在生成…" : "提问"}
           </button>
         </div>
       </form>
@@ -103,17 +102,17 @@ export default function RepoChatPage() {
       {error ? <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
 
       <section className="rounded-lg border border-border bg-white p-5">
-        <h2 className="text-lg font-semibold text-slate-950">Answer</h2>
+        <h2 className="text-lg font-semibold text-slate-950">回答</h2>
         <div className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-700">
-          {answer || (isStreaming ? "Waiting for tokens..." : "No answer yet.")}
+          {answer || (isStreaming ? "正在等待回答…" : "暂无回答。")}
         </div>
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-slate-950">Citations</h2>
+        <h2 className="text-lg font-semibold text-slate-950">代码引用</h2>
         {citations.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border bg-white p-5 text-sm text-slate-500">
-            No citations yet.
+            暂无引用。
           </div>
         ) : (
           citations.map((citation) => (
@@ -129,6 +128,9 @@ async function readSse(
   body: ReadableStream<Uint8Array>,
   onMessage: (message: SseEvent) => void
 ) {
+  // POST chat carries a JSON body, so native EventSource is unsuitable. Parse
+  // fetch incrementally and retain partial frames because network chunks do not
+  // align with SSE message boundaries.
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -159,6 +161,8 @@ async function readSse(
 }
 
 function parseSseEvent(raw: string): SseEvent | null {
+  // ChatService deliberately emits one JSON `data:` line per frame. If the
+  // backend starts using multiline SSE data fields, this parser must evolve too.
   const eventLine = raw.split("\n").find((line) => line.startsWith("event:"));
   const dataLine = raw.split("\n").find((line) => line.startsWith("data:"));
   if (!eventLine || !dataLine) {

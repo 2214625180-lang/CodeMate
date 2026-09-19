@@ -9,7 +9,7 @@ httpx==0.28.1
 mcp>=1.27,<2
 jsonschema>=4.20,<5
 redis==5.0.7
-rq==1.16.2
+rq==2.10.0
 qdrant-client==1.10.1
 tree-sitter==0.20.4
 tree-sitter-languages==1.10.2

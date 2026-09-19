@@ -24,7 +24,7 @@ export function RepoForm({ onCreated }: Props) {
       setRepoUrl("");
       onCreated(repository);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create repository");
+      setError(err instanceof Error ? err.message : "创建仓库失败");
     } finally {
       setIsSubmitting(false);
     }
@@ -33,7 +33,7 @@ export function RepoForm({ onCreated }: Props) {
   return (
     <form onSubmit={handleSubmit} className="rounded-lg border border-border bg-white p-5">
       <label htmlFor="repo-url" className="text-sm font-medium text-slate-700">
-        Git repository URL
+        Git 仓库地址
       </label>
       <div className="mt-2 flex flex-col gap-3 sm:flex-row">
         <input
@@ -49,7 +49,7 @@ export function RepoForm({ onCreated }: Props) {
           disabled={isSubmitting}
           className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
         >
-          {isSubmitting ? "Creating..." : "Add repository"}
+          {isSubmitting ? "正在创建…" : "添加仓库"}
         </button>
       </div>
       {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}

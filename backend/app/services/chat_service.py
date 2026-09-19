@@ -12,6 +12,13 @@ from app.services.retrieval_service import RetrievalResult, RetrievalService
 
 
 class ChatService:
+    """Stream an answer and citations from the same bounded retrieval result set.
+
+    Retrieval completes before generation so the model receives only indexed
+    contexts. Citations are emitted from those same results after answer tokens;
+    generated text cannot invent a new source reference for the API to endorse.
+    """
+
     def __init__(self, db: Session):
         self.db = db
         self.llm_provider = get_llm_provider()
@@ -104,4 +111,6 @@ class ChatService:
         return {repo_id: name for repo_id, name in rows}
 
     def _event(self, event: str, data: dict) -> str:
+        # Keep each JSON payload on one data line. The fetch-based frontend parser
+        # treats the blank line as the frame boundary and reads one data field.
         return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"

@@ -78,7 +78,7 @@ export function SnapshotViewerClient({ initialDatasetId }: { initialDatasetId: s
       }
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load benchmark datasets");
+      setError(err instanceof Error ? err.message : "加载基准数据集失败");
     } finally {
       setIsLoadingDatasets(false);
     }
@@ -109,7 +109,7 @@ export function SnapshotViewerClient({ initialDatasetId }: { initialDatasetId: s
       setError(null);
     } catch (err) {
       setSnapshots([]);
-      setError(err instanceof Error ? err.message : "Failed to load dataset snapshots");
+      setError(err instanceof Error ? err.message : "加载数据集快照失败");
     } finally {
       setIsLoadingSnapshots(false);
     }
@@ -136,7 +136,7 @@ export function SnapshotViewerClient({ initialDatasetId }: { initialDatasetId: s
         await loadSnapshots();
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to backfill dataset snapshots");
+      setError(err instanceof Error ? err.message : "回填数据集快照失败");
     } finally {
       setIsBackfilling(false);
     }
@@ -146,10 +146,10 @@ export function SnapshotViewerClient({ initialDatasetId }: { initialDatasetId: s
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-medium uppercase text-slate-500">Evaluation Center</p>
-          <h1 className="mt-2 text-2xl font-semibold text-slate-950">Dataset Snapshots</h1>
+          <p className="text-sm font-medium uppercase text-slate-500">评测中心</p>
+          <h1 className="mt-2 text-2xl font-semibold text-slate-950">数据集快照</h1>
           <p className="mt-2 max-w-3xl text-sm text-slate-600">
-            Inspect immutable benchmark case snapshots and compare case changes between versions.
+            查看不可变的基准用例快照，对比不同版本之间的用例变化。
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -157,19 +157,19 @@ export function SnapshotViewerClient({ initialDatasetId }: { initialDatasetId: s
             href="/evaluations/datasets"
             className="rounded-md border border-border px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
-            Benchmark Datasets
+            基准数据集
           </Link>
           <Link
             href="/evaluations/history"
             className="rounded-md border border-border px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
-            History
+            历史记录
           </Link>
           <Link
             href="/evaluations"
             className="rounded-md border border-border px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
-            Evaluation Center
+            评测中心
           </Link>
         </div>
       </div>
@@ -178,7 +178,7 @@ export function SnapshotViewerClient({ initialDatasetId }: { initialDatasetId: s
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(220px,320px)_minmax(220px,320px)]">
           <div>
             <label htmlFor="snapshot-dataset" className="text-sm font-medium text-slate-700">
-              Benchmark dataset
+              基准数据集
             </label>
             <select
               id="snapshot-dataset"
@@ -187,7 +187,7 @@ export function SnapshotViewerClient({ initialDatasetId }: { initialDatasetId: s
               onChange={(event) => setDatasetId(event.target.value)}
               className="mt-2 min-h-10 w-full rounded-md border border-border bg-white px-3 text-sm outline-none focus:border-slate-500 disabled:bg-slate-100 disabled:text-slate-400"
             >
-              {datasets.length === 0 ? <option value="">No datasets</option> : null}
+              {datasets.length === 0 ? <option value="">无数据集</option> : null}
               {datasets.map((dataset) => (
                 <option key={dataset.id} value={dataset.id}>
                   {dataset.name} v{dataset.version} ({dataset.task_type})
@@ -197,7 +197,7 @@ export function SnapshotViewerClient({ initialDatasetId }: { initialDatasetId: s
           </div>
           <SnapshotSelect
             id="candidate-snapshot"
-            label="Snapshot"
+            label="快照"
             value={selectedSnapshot?.id ?? ""}
             snapshots={snapshots}
             disabled={isLoadingSnapshots || snapshots.length === 0}
@@ -205,7 +205,7 @@ export function SnapshotViewerClient({ initialDatasetId }: { initialDatasetId: s
           />
           <SnapshotSelect
             id="base-snapshot"
-            label="Compare with"
+            label="对比版本"
             value={compareSnapshot?.id ?? ""}
             snapshots={snapshots}
             disabled={isLoadingSnapshots || snapshots.length < 2}
@@ -215,8 +215,8 @@ export function SnapshotViewerClient({ initialDatasetId }: { initialDatasetId: s
         {selectedDataset ? (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
             <p className="text-xs text-slate-500">
-              {selectedDataset.task_type} · current v{selectedDataset.version} ·{" "}
-              {selectedDataset.cases_json.length} current cases
+              {selectedDataset.task_type} · 当前版本 v{selectedDataset.version} ·{" "}
+              {selectedDataset.cases_json.length} 当前用例
             </p>
             <div className="flex flex-wrap gap-2">
               <button
@@ -225,7 +225,7 @@ export function SnapshotViewerClient({ initialDatasetId }: { initialDatasetId: s
                 onClick={() => void runBackfill(true)}
                 className="rounded-md border border-border px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
               >
-                {isBackfilling ? "Running..." : "Dry Run Backfill"}
+                {isBackfilling ? "正在运行…" : "预演回填"}
               </button>
               <button
                 type="button"
@@ -233,7 +233,7 @@ export function SnapshotViewerClient({ initialDatasetId }: { initialDatasetId: s
                 onClick={() => void runBackfill(false)}
                 className="rounded-md bg-slate-950 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
               >
-                Apply Backfill
+                执行回填
               </button>
             </div>
           </div>
@@ -247,7 +247,7 @@ export function SnapshotViewerClient({ initialDatasetId }: { initialDatasetId: s
 
       {isLoadingSnapshots ? (
         <section className="rounded-lg border border-border bg-white p-5 text-sm text-slate-500">
-          Loading dataset snapshots...
+          正在加载数据集快照…
         </section>
       ) : selectedSnapshot ? (
         <>
@@ -267,7 +267,7 @@ export function SnapshotViewerClient({ initialDatasetId }: { initialDatasetId: s
         </>
       ) : (
         <section className="rounded-lg border border-border bg-white p-5 text-sm text-slate-500">
-          No snapshots for this dataset yet. Run the backfill CLI or save the dataset to create one.
+          此数据集暂无快照。运行回填 CLI 或保存数据集以创建快照。
         </section>
       )}
     </div>
@@ -299,43 +299,43 @@ function BackfillResultPanel({
   return (
     <section className="rounded-lg border border-border bg-white p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-slate-950">Backfill Result</h2>
+        <h2 className="text-lg font-semibold text-slate-950">回填结果</h2>
         <div className="flex flex-wrap items-center gap-2">
           <span
             className={`rounded-md px-2 py-1 text-xs font-medium ${
               result.dry_run ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"
             }`}
           >
-            {result.dry_run ? "dry run" : "applied"}
+            {result.dry_run ? "预演" : "applied"}
           </span>
           <button
             type="button"
             onClick={() => download("json")}
             className="rounded-md border border-border px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
-            Export JSON
+            导出 JSON
           </button>
           <button
             type="button"
             onClick={() => download("markdown")}
             className="rounded-md border border-border px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
-            Export Markdown
+            导出 Markdown
           </button>
         </div>
       </div>
       <div className="mt-4 grid gap-3 sm:grid-cols-4">
-        <ResultMetric label="Scanned" value={result.scanned} />
-        <ResultMetric label="Backfilled" value={result.backfilled} />
-        <ResultMetric label="Skipped" value={result.skipped} />
-        <ResultMetric label="Created Snapshots" value={result.created_snapshots} />
+        <ResultMetric label="已扫描" value={result.scanned} />
+        <ResultMetric label="已回填" value={result.backfilled} />
+        <ResultMetric label="已跳过" value={result.skipped} />
+        <ResultMetric label="新建快照" value={result.created_snapshots} />
       </div>
       <div className="mt-4 overflow-x-auto">
         <table className="min-w-full text-left text-sm">
           <thead>
             <tr className="border-b border-border text-xs uppercase text-slate-500">
-              <th className="py-2 pr-4 font-medium">Status</th>
-              <th className="py-2 pr-4 font-medium">Count</th>
+              <th className="py-2 pr-4 font-medium">状态</th>
+              <th className="py-2 pr-4 font-medium">数量</th>
             </tr>
           </thead>
           <tbody>
@@ -350,7 +350,7 @@ function BackfillResultPanel({
       </div>
       {detailRows.length > 0 ? (
         <>
-          <h3 className="mt-5 text-sm font-semibold text-slate-950">Details</h3>
+          <h3 className="mt-5 text-sm font-semibold text-slate-950">详情</h3>
           <pre className="mt-3 max-h-[360px] overflow-auto rounded-md bg-slate-950 p-4 text-xs leading-5 text-slate-100">
             <code>{JSON.stringify(detailRows, null, 2)}</code>
           </pre>
@@ -409,11 +409,11 @@ function SnapshotSelect({
         className="mt-2 min-h-10 w-full rounded-md border border-border bg-white px-3 text-sm outline-none focus:border-slate-500 disabled:bg-slate-100 disabled:text-slate-400"
       >
         {value === "" ? (
-          <option value="">{snapshots.length === 0 ? "No snapshots" : "No comparison"}</option>
+          <option value="">{snapshots.length === 0 ? "无快照" : "无对比"}</option>
         ) : null}
         {snapshots.map((snapshot) => (
           <option key={snapshot.id} value={snapshot.id}>
-            v{snapshot.version} · {snapshot.id.slice(0, 8)} · {snapshot.cases_json.length} cases
+            v{snapshot.version} · {snapshot.id.slice(0, 8)} · {snapshot.cases_json.length} 个用例
           </option>
         ))}
       </select>
@@ -433,18 +433,18 @@ function SnapshotList({
   return (
     <section className="rounded-lg border border-border bg-white p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-slate-950">Snapshot Versions</h2>
-        <span className="text-sm text-slate-500">{snapshots.length} snapshots</span>
+        <h2 className="text-lg font-semibold text-slate-950">快照版本</h2>
+        <span className="text-sm text-slate-500">{snapshots.length} 个快照</span>
       </div>
       <div className="mt-4 overflow-x-auto">
         <table className="min-w-full text-left text-sm">
           <thead>
             <tr className="border-b border-border text-xs uppercase text-slate-500">
-              <th className="py-2 pr-4 font-medium">Version</th>
-              <th className="py-2 pr-4 font-medium">Snapshot</th>
-              <th className="py-2 pr-4 font-medium">Cases</th>
-              <th className="py-2 pr-4 font-medium">Baseline</th>
-              <th className="py-2 pr-4 font-medium">Created</th>
+              <th className="py-2 pr-4 font-medium">版本</th>
+              <th className="py-2 pr-4 font-medium">快照</th>
+              <th className="py-2 pr-4 font-medium">用例</th>
+              <th className="py-2 pr-4 font-medium">基线</th>
+              <th className="py-2 pr-4 font-medium">创建时间</th>
             </tr>
           </thead>
           <tbody>
@@ -484,7 +484,7 @@ function SnapshotDetails({ snapshot }: { snapshot: EvaluationDatasetSnapshot }) 
   return (
     <section className="rounded-lg border border-border bg-white p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-slate-950">Snapshot Details</h2>
+        <h2 className="text-lg font-semibold text-slate-950">快照详情</h2>
         <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
           v{snapshot.version}
         </span>
@@ -492,16 +492,16 @@ function SnapshotDetails({ snapshot }: { snapshot: EvaluationDatasetSnapshot }) 
       <div className="mt-4 overflow-hidden rounded-md border border-border">
         <table className="min-w-full text-left text-sm">
           <tbody>
-            <DetailRow label="Snapshot ID" value={snapshot.id} />
-            <DetailRow label="Dataset ID" value={snapshot.dataset_id} />
-            <DetailRow label="Task Type" value={snapshot.task_type} />
-            <DetailRow label="Cases" value={snapshot.cases_json.length} />
-            <DetailRow label="Baseline Run" value={snapshot.baseline_run_id ?? "not configured"} />
-            <DetailRow label="Created" value={new Date(snapshot.created_at).toLocaleString()} />
+            <DetailRow label="快照 ID" value={snapshot.id} />
+            <DetailRow label="数据集 ID" value={snapshot.dataset_id} />
+            <DetailRow label="任务类型" value={snapshot.task_type} />
+            <DetailRow label="用例" value={snapshot.cases_json.length} />
+            <DetailRow label="基线运行" value={snapshot.baseline_run_id ?? "未配置"} />
+            <DetailRow label="创建时间" value={new Date(snapshot.created_at).toLocaleString()} />
           </tbody>
         </table>
       </div>
-      <h3 className="mt-5 text-sm font-semibold text-slate-950">Cases JSON</h3>
+      <h3 className="mt-5 text-sm font-semibold text-slate-950">用例 JSON</h3>
       <pre className="mt-3 max-h-[620px] overflow-auto rounded-md bg-slate-950 p-4 text-xs leading-5 text-slate-100">
         <code>{JSON.stringify(snapshot.cases_json, null, 2)}</code>
       </pre>
@@ -533,30 +533,30 @@ function SnapshotDiff({
     <section className="rounded-lg border border-border bg-white p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-slate-950">Version Diff</h2>
+          <h2 className="text-lg font-semibold text-slate-950">版本差异</h2>
           <p className="mt-1 text-sm text-slate-500">
             {baseSnapshot
               ? `v${baseSnapshot.version} -> v${candidateSnapshot.version}`
-              : "Select another snapshot to compare."}
+              : "请选择另一快照进行对比。"}
           </p>
         </div>
       </div>
       {diff ? (
         <>
           <div className="mt-4 grid gap-3 sm:grid-cols-4">
-            <DiffCount label="Added" value={diff.counts.added} tone="emerald" />
-            <DiffCount label="Removed" value={diff.counts.removed} tone="red" />
-            <DiffCount label="Changed" value={diff.counts.changed} tone="amber" />
-            <DiffCount label="Unchanged" value={diff.counts.unchanged} tone="slate" />
+            <DiffCount label="新增" value={diff.counts.added} tone="emerald" />
+            <DiffCount label="移除" value={diff.counts.removed} tone="red" />
+            <DiffCount label="变更" value={diff.counts.changed} tone="amber" />
+            <DiffCount label="未变更" value={diff.counts.unchanged} tone="slate" />
           </div>
           <div className="mt-4 max-h-[640px] overflow-auto">
             <table className="min-w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-border text-xs uppercase text-slate-500">
-                  <th className="py-2 pr-4 font-medium">Case</th>
-                  <th className="py-2 pr-4 font-medium">Status</th>
-                  <th className="py-2 pr-4 font-medium">Base</th>
-                  <th className="py-2 pr-4 font-medium">Snapshot</th>
+                  <th className="py-2 pr-4 font-medium">用例</th>
+                  <th className="py-2 pr-4 font-medium">状态</th>
+                  <th className="py-2 pr-4 font-medium">基础版本</th>
+                  <th className="py-2 pr-4 font-medium">快照</th>
                 </tr>
               </thead>
               <tbody>
@@ -581,7 +581,7 @@ function SnapshotDiff({
           </div>
         </>
       ) : (
-        <p className="mt-4 text-sm text-slate-500">No comparison snapshot available.</p>
+        <p className="mt-4 text-sm text-slate-500">没有可用于对比的快照。</p>
       )}
     </section>
   );

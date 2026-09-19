@@ -2,7 +2,7 @@ export function DiffViewer({ diff }: { diff: string | null | undefined }) {
   if (!diff) {
     return (
       <div className="rounded-lg border border-dashed border-border bg-white p-5 text-sm text-slate-500">
-        No diff yet.
+        暂无 Diff。
       </div>
     );
   }

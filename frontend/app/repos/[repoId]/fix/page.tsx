@@ -23,6 +23,8 @@ import type {
   TraceEventType
 } from "@/lib/types";
 
+// Keep this subscription list aligned with runs.py::_trace_events. Unknown or
+// newly added backend event types are otherwise persisted but invisible here.
 const TRACE_EVENTS: TraceEventType[] = [
   "inspection",
   "agent_plan",
@@ -47,6 +49,9 @@ const TRACE_EVENTS: TraceEventType[] = [
   "error"
 ];
 
+// These are the backend statuses that unlock a new submission after a REST
+// refresh. Terminal final/error trace events also end the live UI phase, while
+// waiting_approval and waiting_reconciliation remain resumable states.
 const TERMINAL_RUN_STATUSES = new Set([
   "verified_success",
   "unverified_patch",
@@ -79,6 +84,9 @@ export default function RepoFixPage() {
   >({});
   const [reconcilingExecutionId, setReconcilingExecutionId] = useState<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+  // Network responses may arrive after the user opens or creates another run.
+  // This active-run identity guard prevents callbacks for an older run from
+  // overwriting the timeline and verdict of the currently active run.
   const activeRunIdRef = useRef<string | null>(null);
   const loadedUrlRunIdRef = useRef<string | null>(null);
 
@@ -101,6 +109,7 @@ export default function RepoFixPage() {
   const refreshRun = useCallback(async (nextRunId: string) => {
     try {
       const data = await getRun(nextRunId);
+      // Ignore a REST response that completed after the user switched runs.
       if (activeRunIdRef.current !== nextRunId) {
         return;
       }
@@ -112,7 +121,7 @@ export default function RepoFixPage() {
       if (activeRunIdRef.current !== nextRunId) {
         return;
       }
-      setError(err instanceof Error ? err.message : "Failed to load run");
+      setError(err instanceof Error ? err.message : "加载运行记录失败");
     }
   }, []);
 
@@ -130,6 +139,8 @@ export default function RepoFixPage() {
           }
           const event = JSON.parse((message as MessageEvent).data) as TraceEvent;
           setEvents((current) => {
+            // Opening a new trace connection replays persisted steps; event IDs
+            // make that replay idempotent independently of delivery order.
             if (current.some((item) => item.id === event.id)) {
               return current;
             }
@@ -169,6 +180,8 @@ export default function RepoFixPage() {
         if (activeRunIdRef.current !== nextRunId) {
           return;
         }
+        // A transport failure is not an Agent verdict. Re-read durable state and
+        // keep submissions locked unless the backend reports a terminal status.
         void refreshRun(nextRunId);
       };
     },
@@ -225,6 +238,8 @@ export default function RepoFixPage() {
       loadedUrlRunIdRef.current = response.run_id;
       activeRunIdRef.current = response.run_id;
       setRunId(response.run_id);
+      // Publish the new active ID before changing the URL. Otherwise the old
+      // runId effect can race this submission and restore the previous run.
       router.replace(
         `/repos/${encodeURIComponent(repoId)}/fix?runId=${encodeURIComponent(response.run_id)}`,
         { scroll: false }
@@ -232,7 +247,7 @@ export default function RepoFixPage() {
       connectTrace(response.run_id);
     } catch (err) {
       setIsRunning(false);
-      setError(err instanceof Error ? err.message : "Failed to start fix run");
+      setError(err instanceof Error ? err.message : "启动修复任务失败");
     }
   }
 
@@ -244,7 +259,7 @@ export default function RepoFixPage() {
       await submitRunFeedback(runId, status);
       await refreshRun(runId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to submit feedback");
+      setError(err instanceof Error ? err.message : "提交反馈失败");
     }
   }
 
@@ -265,7 +280,7 @@ export default function RepoFixPage() {
         await refreshRun(runId);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to decide MCP approval");
+      setError(err instanceof Error ? err.message : "处理 MCP 审批失败");
     } finally {
       setDecidingApprovalId(null);
     }
@@ -291,7 +306,7 @@ export default function RepoFixPage() {
         await refreshRun(runId);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to reconcile MCP execution");
+      setError(err instanceof Error ? err.message : "MCP 执行结果对账失败");
     } finally {
       setReconcilingExecutionId(null);
     }
@@ -301,25 +316,25 @@ export default function RepoFixPage() {
     <div className="space-y-6">
       <div>
         <Link href={`/repos/${repoId}`} className="text-sm text-slate-600 hover:text-slate-950">
-          Back to repository
+          返回仓库
         </Link>
-        <h1 className="mt-3 text-2xl font-semibold text-slate-950">Bug Fix Agent</h1>
+        <h1 className="mt-3 text-2xl font-semibold text-slate-950">代码缺陷修复</h1>
       </div>
 
       <form onSubmit={handleSubmit} className="rounded-lg border border-border bg-white p-5">
         <label htmlFor="issue" className="text-sm font-medium text-slate-700">
-          Error log or failing test
+          错误日志或失败测试
         </label>
         <textarea
           id="issue"
           value={issue}
           onChange={(event) => setIssue(event.target.value)}
-          placeholder="add function test fails: expected 5 but received -1"
+          placeholder="add 函数测试失败：预期为 5，实际为 -1"
           className="mt-2 min-h-36 w-full resize-y rounded-md border border-border px-3 py-2 text-sm outline-none focus:border-slate-500"
           required
         />
         <label htmlFor="test-command" className="mt-4 block text-sm font-medium text-slate-700">
-          Test command
+          测试命令
         </label>
         <input
           id="test-command"
@@ -329,37 +344,37 @@ export default function RepoFixPage() {
         />
         <details className="mt-4 rounded-md border border-border p-3">
           <summary className="cursor-pointer text-sm font-medium text-slate-700">
-            Delegated MCP identity (optional)
+            委托 MCP 身份（可选）
           </summary>
           <p className="mt-2 text-xs text-slate-500">
-            Use the identity ID and one-time-displayed proof returned by the OAuth callback.
+            填写 OAuth 回调返回的身份 ID 和仅显示一次的委托凭证。
           </p>
           <input
             value={delegatedIdentityId}
             onChange={(event) => setDelegatedIdentityId(event.target.value)}
-            placeholder="Delegated identity UUID"
-            aria-label="Delegated identity ID"
+            placeholder="委托身份 UUID"
+            aria-label="委托身份 ID"
             className="mt-3 min-h-10 w-full rounded-md border border-border px-3 text-sm"
           />
           <input
             type="password"
             value={delegationToken}
             onChange={(event) => setDelegationToken(event.target.value)}
-            placeholder="Delegation proof"
-            aria-label="Delegation proof"
+            placeholder="委托凭证"
+            aria-label="委托凭证"
             className="mt-2 min-h-10 w-full rounded-md border border-border px-3 text-sm"
           />
         </details>
         <div className="mt-4 flex items-center justify-between gap-3">
           <p className="text-sm text-slate-500">
-            {runId ? `Run ${runId}` : "No active run"}
+            {runId ? `运行 ${runId}` : "暂无运行中的任务"}
           </p>
           <button
             type="submit"
             disabled={isRunning}
             className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
           >
-            {isRunning ? "Running..." : "Start fix"}
+            {isRunning ? "正在运行…" : "开始修复"}
           </button>
         </div>
       </form>
@@ -368,7 +383,7 @@ export default function RepoFixPage() {
 
       <section className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
         <div className="space-y-3">
-          <h2 className="text-lg font-semibold text-slate-950">Agent Timeline</h2>
+          <h2 className="text-lg font-semibold text-slate-950">Agent 执行时间线</h2>
           <AgentTimeline
             events={events}
             approvalOverrides={approvalOverrides}
@@ -386,10 +401,12 @@ export default function RepoFixPage() {
         <div className="space-y-4">
           <section>
             <h2 className="mb-3 text-lg font-semibold text-slate-950">Diff</h2>
+            {/* Prefer a non-empty persisted final diff; otherwise retain the
+                latest streamed patch so the attempted change remains visible. */}
             <DiffViewer diff={run?.final_diff || latestPatch} />
           </section>
           <section>
-            <h2 className="mb-3 text-lg font-semibold text-slate-950">Tests</h2>
+            <h2 className="mb-3 text-lg font-semibold text-slate-950">测试</h2>
             <TestResultPanel
               result={run ? { ...(run.test_result ?? {}), status: run.status } : latestTest}
             />
@@ -415,7 +432,7 @@ export default function RepoFixPage() {
                 ))}
               </div>
               {run.feedback_status ? (
-                <p className="mt-3 text-sm text-slate-500">Feedback: {run.feedback_status}</p>
+                <p className="mt-3 text-sm text-slate-500">反馈： {run.feedback_status}</p>
               ) : null}
             </section>
           ) : null}

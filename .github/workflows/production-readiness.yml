@@ -68,7 +68,10 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci --registry=https://registry.npmjs.org --replace-registry-host=always
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e
+      - name: Run open-mode golden path
+        run: npm run test:e2e
+      - name: Run protected-mode user isolation
+        run: npm run test:e2e:protected
 
   real-infrastructure:
     runs-on: ubuntu-latest

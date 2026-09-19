@@ -42,7 +42,7 @@ export async function auditSecurityEvent(event: SecurityAuditEvent): Promise<voi
     await mkdir(dirname(path), { recursive: true });
     await appendFile(path, `${JSON.stringify(record)}\n`, "utf-8");
   } catch (error) {
-    console.error("Failed to write security audit event", error);
+    console.error("写入安全审计事件失败", error);
   }
   const ingestUrl = process.env.SECURITY_AUDIT_INGEST_URL;
   const ingestToken = process.env.SECURITY_AUDIT_INGEST_TOKEN;
@@ -60,10 +60,10 @@ export async function auditSecurityEvent(event: SecurityAuditEvent): Promise<voi
       cache: "no-store"
     });
     if (!response.ok) {
-      throw new Error(`audit ingest returned ${response.status}`);
+      throw new Error(`审计接收端返回 ${response.status}`);
     }
   } catch (error) {
-    console.error("Failed to deliver frontend security audit event", error);
+    console.error("投递前端安全审计事件失败", error);
     if (process.env.SECURITY_AUDIT_FAIL_CLOSED === "true") {
       throw error;
     }
@@ -85,7 +85,7 @@ export async function readSecurityAuditEvents(limit = 100): Promise<SecurityAudi
     if (isMissingFileError(error)) {
       return [];
     }
-    console.error("Failed to read security audit events", error);
+    console.error("读取安全审计事件失败", error);
     return [];
   }
 }

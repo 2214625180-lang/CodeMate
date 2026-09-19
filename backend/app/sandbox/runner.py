@@ -11,10 +11,17 @@ import httpx
 
 from app.core.config import settings
 from app.core.telemetry import operation_span, record_span_usage
+from app.sandbox.patches import InvalidUnifiedDiffError, normalize_unified_diff_hunks
 
 
 @dataclass(slots=True)
 class TestResult:
+    """Normalized execution evidence returned by every sandbox backend.
+
+    ``passed`` is treated as an untrusted report until it agrees with
+    ``tests_ran``, the exit code and infrastructure metadata.
+    """
+
     passed: bool
     exit_code: int
     stdout: str
@@ -27,7 +34,8 @@ class TestResult:
     failure_kind: Literal["test_failure", "skipped", "infrastructure"] | None = None
 
     def __post_init__(self) -> None:
-        # `passed` is derived from execution evidence, even for remote broker responses.
+        # Derive `passed` from evidence even for remote broker responses.  This
+        # prevents a skipped dependency install or timeout from becoming success.
         self.passed = bool(
             self.tests_ran
             and self.exit_code == 0
@@ -97,12 +105,39 @@ class SandboxService:
         if not diff.strip():
             return {"ok": False, "stdout": "", "stderr": "Empty patch"}
 
+        try:
+            normalized_patch = normalize_unified_diff_hunks(diff)
+        except InvalidUnifiedDiffError as exc:
+            return {
+                "ok": False,
+                "stdout": "",
+                "stderr": f"Invalid unified diff: {exc}",
+                "exit_code": 128,
+            }
+
         untracked_before, inventory_error = self._untracked_paths(workspace)
         if inventory_error:
             return {"ok": False, "stdout": "", "stderr": inventory_error, "exit_code": 1}
 
         patch_file = workspace / ".codemate.patch"
-        patch_file.write_text(diff, encoding="utf-8")
+        patch_file.write_text(normalized_patch.content, encoding="utf-8")
+        check_result = subprocess.run(
+            ["git", "-C", str(workspace), "apply", "--check", str(patch_file)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        if check_result.returncode != 0:
+            patch_file.unlink(missing_ok=True)
+            return {
+                "ok": False,
+                "stdout": check_result.stdout,
+                "stderr": check_result.stderr,
+                "exit_code": check_result.returncode,
+                "patch_normalized": normalized_patch.repaired_hunks > 0,
+            }
+
         result = subprocess.run(
             ["git", "-C", str(workspace), "apply", str(patch_file)],
             capture_output=True,
@@ -117,6 +152,7 @@ class SandboxService:
                 "stdout": result.stdout,
                 "stderr": result.stderr,
                 "exit_code": result.returncode,
+                "patch_normalized": normalized_patch.repaired_hunks > 0,
             }
 
         untracked_after, inventory_error = self._untracked_paths(workspace)
@@ -124,6 +160,9 @@ class SandboxService:
             return {"ok": False, "stdout": result.stdout, "stderr": inventory_error, "exit_code": 1}
         added_paths = sorted(untracked_after - untracked_before)
         if added_paths:
+            # Plain `git diff` omits untracked files. Intent-to-add makes a newly
+            # generated file visible in the final diff without staging content or
+            # touching the indexed source repository outside this workspace.
             intent_result = subprocess.run(
                 ["git", "-C", str(workspace), "add", "--intent-to-add", "--", *added_paths],
                 capture_output=True,
@@ -143,6 +182,7 @@ class SandboxService:
             "stdout": result.stdout,
             "stderr": result.stderr,
             "exit_code": 0,
+            "patch_normalized": normalized_patch.repaired_hunks > 0,
         }
 
     def _untracked_paths(self, workspace: Path) -> tuple[set[str], str | None]:
@@ -243,6 +283,8 @@ class SandboxService:
                 failure_kind="skipped",
             )
 
+        # _test_shell_command eventually uses a shell, so safety depends on this
+        # exact allowlist check happening again at the final execution boundary.
         if command not in settings.allowed_test_commands:
             return TestResult(
                 passed=False,
@@ -509,7 +551,8 @@ class SandboxService:
     ) -> TestResult:
         stdout_text = self._output_text(stdout)
         stderr_text = self._output_text(stderr)
-        # Dependency setup is wrapped to exit 125 before the test command starts.
+        # Dependency setup is wrapped to exit 125 before the test command starts;
+        # this is infrastructure evidence, not a failed or successful test run.
         tests_ran = not timed_out and exit_code != 125
         return TestResult(
             passed=reported_passed,

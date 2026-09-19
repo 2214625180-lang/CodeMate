@@ -1,3 +1,10 @@
+"""Pure, deterministic verdict rules for graph-completion repair evidence.
+
+No model-generated summary can mark a run successful. This module classifies
+the graph's raw execution evidence and owns its repair verdict; API/worker setup
+failures may still terminate a run directly as ``infra_error``.
+"""
+
 from collections.abc import Mapping
 from typing import Any, Literal
 
@@ -57,6 +64,8 @@ def classify_test_result(result: Mapping[str, Any] | None) -> TestOutcome:
 
 def route_after_reproduction(state: Mapping[str, Any]) -> str:
     baseline_outcome = classify_test_result(state.get("baseline_test_result"))
+    # A passing baseline proves nothing was reproduced; infrastructure failure
+    # provides no trustworthy starting point. Neither case may reach patching.
     if baseline_outcome in {"passed", "infra_error"}:
         return "final"
     return "continue"
@@ -82,6 +91,7 @@ def route_after_regression_checks(state: Mapping[str, Any]) -> str:
 
 
 def build_verification_result(state: Mapping[str, Any]) -> dict[str, Any]:
+    """Project raw phase results into the only terminal verdict used by callers."""
     baseline = _mapping_or_none(state.get("baseline_test_result"))
     targeted = _mapping_or_none(state.get("targeted_test_result"))
     regression = _mapping_or_none(state.get("regression_test_result"))
@@ -150,6 +160,8 @@ def _determine_status(
     regression: Mapping[str, Any] | None,
     apply_result: Mapping[str, Any] | None,
 ) -> tuple[VerificationStatus, str]:
+    # Evaluate the evidence in lifecycle order.  Later success cannot compensate
+    # for a missing baseline, failed patch application or skipped test phase.
     baseline_outcome = classify_test_result(baseline)
     if baseline_outcome == "infra_error":
         return INFRA_ERROR, "baseline_infrastructure_error"

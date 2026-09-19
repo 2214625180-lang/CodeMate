@@ -29,6 +29,13 @@ class RetrievalResult:
 
 
 class RetrievalService:
+    """Retrieve citable chunks with a bounded hybrid ranking pipeline.
+
+    Keyword and vector retrieval deliberately remain separate candidate
+    generators. Rank fusion avoids comparing their unrelated raw score scales;
+    optional reranking and context expansion happen only after candidate fusion.
+    """
+
     RRF_K = 60
     CHINESE_HINTS = {
         "登录": ["login", "auth", "signin", "sign_in", "authenticate", "session", "token"],
@@ -144,6 +151,7 @@ class RetrievalService:
             if result.score >= settings.retrieval_min_vector_score
         ]
 
+        # RRF combines rank positions rather than incomparable FTS/vector scores.
         candidates = (
             self._reciprocal_rank_fusion(
                 keyword_results=keyword_results,

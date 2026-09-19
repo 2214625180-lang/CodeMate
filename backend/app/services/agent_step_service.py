@@ -17,6 +17,14 @@ _TIMELINE_ENVELOPE_PURPOSE = "agent-timeline"
 
 
 class AgentStepService:
+    """Persist a public, redacted timeline plus bounded restricted evidence.
+
+    Public events retain only redacted summaries. Restricted inputs/outputs can
+    be envelope-encrypted for authorized access during their retention window
+    and expire independently; public observability never falls back to storing
+    those raw values as plaintext.
+    """
+
     def __init__(self, db: Session):
         self.db = db
 
@@ -30,6 +38,8 @@ class AgentStepService:
         output_json: Any | None = None,
         duration_ms: int | None = None,
     ) -> AgentStep:
+        # Redaction happens before the public JSON columns are written. Raw
+        # values are considered only for the separately encrypted payload.
         safe_input, input_classification = redact_timeline_payload(input_json)
         safe_output, output_classification = redact_timeline_payload(output_json)
         now = datetime.now(timezone.utc)
@@ -124,6 +134,8 @@ class AgentStepService:
         }
 
     def record_tool(self, *, run_id: str, tool_name: str, input_json: dict, fn):
+        # Call and result are separate events: a worker crash remains visible as
+        # an in-flight call instead of being reported as a fabricated result.
         with operation_span(
             f"codemate.tool.{tool_name}",
             component="tool",

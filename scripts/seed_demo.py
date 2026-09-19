@@ -100,6 +100,7 @@ def run_git(
         capture_output=True,
         text=True,
         check=False,
+        timeout=settings.clone_timeout_seconds,
     )
     if completed.returncode != 0:
         detail = completed.stderr.strip() or completed.stdout.strip()
@@ -145,6 +146,38 @@ def materialize_fixture_repository(fixture_root: Path) -> tuple[Path, str]:
     return bare_repository, commit_sha
 
 
+class DemoIndexService(IndexService):
+    """Import only the local fixture while retaining normal indexing safeguards."""
+
+    def _clone_repository(self, repo_url: str, workspace: Path) -> None:
+        fixture_store = Path(settings.workspace_dir).resolve() / ".demo-fixtures"
+        expected_repository = fixture_store / "demo-cart-bug.git"
+        if (
+            settings.app_env != "local"
+            or Path(repo_url) != expected_repository
+            or expected_repository.resolve() != expected_repository
+            or not expected_repository.is_dir()
+        ):
+            raise ValueError("Demo import requires the generated local fixture repository.")
+
+        # This CLI-only importer permits file transport for the one generated
+        # fixture. The public IndexService continues to reject local Git URLs.
+        environment = self._safe_git_environment()
+        environment["GIT_ALLOW_PROTOCOL"] = "file"
+        run_git(
+            [
+                "clone", "--quiet", "--no-local", "--no-checkout",
+                "--no-recurse-submodules", "--", str(expected_repository), str(workspace),
+            ],
+            env=environment,
+        )
+        self._assert_checkout_budget(workspace)
+        checkout = self._run_git(workspace, ["checkout", "--force"])
+        if checkout.returncode != 0:
+            raise RuntimeError("Repository checkout failed.")
+        self._assert_workspace_budget(workspace)
+
+
 def upsert_repository(
     *,
     manifest: dict[str, Any],
@@ -163,7 +196,7 @@ def upsert_repository(
         database.add(repository)
         database.commit()
 
-        IndexService(database).index_repository(repository.id, full=True)
+        DemoIndexService(database).index_repository(repository.id, full=True)
         database.expire_all()
         indexed_repository = database.get(Repository, repository.id)
         if indexed_repository is None or indexed_repository.status != "indexed":
@@ -262,10 +295,11 @@ def upsert_fix_dataset(
         return dataset
 
 
-def start_agent_run(manifest: dict[str, Any]) -> str:
+def start_agent_run(manifest: dict[str, Any], *, owner_id: str) -> str:
     with SessionLocal() as database:
         run = AgentService(database).create_fix_run(
             repo_id=manifest["repo_id"],
+            owner_id=owner_id,
             issue=manifest["issue"],
             test_command=manifest["target_test_command"],
         )
@@ -322,7 +356,11 @@ def main() -> int:
         llm_provider=llm_provider,
         llm_model=llm_model,
     )
-    run_id = start_agent_run(manifest) if args.start_run else None
+    run_id = (
+        start_agent_run(manifest, owner_id=repository.owner_id)
+        if args.start_run
+        else None
+    )
     result = build_result(
         manifest=manifest,
         commit_sha=commit_sha,

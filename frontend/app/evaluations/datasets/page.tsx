@@ -50,7 +50,7 @@ export default function EvaluationDatasetsPage() {
   const [selectedDataset, setSelectedDataset] = useState<EvaluationDataset | null>(null);
   const [filter, setFilter] = useState<"all" | "retrieval" | "fix">("all");
   const [taskType, setTaskType] = useState<"retrieval" | "fix">("retrieval");
-  const [name, setName] = useState("Retrieval benchmark");
+  const [name, setName] = useState("检索基准评测");
   const [description, setDescription] = useState("");
   const [version, setVersion] = useState(1);
   const [baselineRunId, setBaselineRunId] = useState("");
@@ -92,7 +92,7 @@ export default function EvaluationDatasetsPage() {
       setDatasets(data);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load benchmark datasets");
+      setError(err instanceof Error ? err.message : "加载基准数据集失败");
     } finally {
       setIsLoading(false);
     }
@@ -107,7 +107,7 @@ export default function EvaluationDatasetsPage() {
       const data = await listEvaluationRuns(100);
       setRuns(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load evaluation runs");
+      setError(err instanceof Error ? err.message : "加载评测记录失败");
     }
   }, []);
 
@@ -135,7 +135,7 @@ export default function EvaluationDatasetsPage() {
         metadata_json: metadata
       };
       if (!payload.name) {
-        throw new Error("Dataset name is required.");
+        throw new Error("请输入数据集名称。");
       }
 
       const saved = selectedDataset
@@ -145,16 +145,16 @@ export default function EvaluationDatasetsPage() {
       setSelectedDataset(saved);
       applyDatasetToForm(saved);
       setDatasets((current) => [saved, ...current.filter((dataset) => dataset.id !== saved.id)]);
-      setNotice(selectedDataset ? "Dataset updated." : "Dataset created.");
+      setNotice(selectedDataset ? "数据集已更新。" : "数据集已创建。");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save benchmark dataset");
+      setError(err instanceof Error ? err.message : "保存基准数据集失败");
     } finally {
       setIsSaving(false);
     }
   }
 
   async function handleDelete(dataset: EvaluationDataset) {
-    if (!window.confirm(`Delete dataset "${dataset.name}"?`)) {
+    if (!window.confirm(`删除数据集“${dataset.name}"?`)) {
       return;
     }
 
@@ -166,16 +166,16 @@ export default function EvaluationDatasetsPage() {
       if (selectedDataset?.id === dataset.id) {
         startNew(dataset.task_type);
       }
-      setNotice("Dataset deleted.");
+      setNotice("数据集已删除。");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete benchmark dataset");
+      setError(err instanceof Error ? err.message : "删除基准数据集失败");
     }
   }
 
   function startNew(nextTaskType: "retrieval" | "fix" = taskType) {
     setSelectedDataset(null);
     setTaskType(nextTaskType);
-    setName(nextTaskType === "retrieval" ? "Retrieval benchmark" : "Fix benchmark");
+    setName(nextTaskType === "retrieval" ? "检索基准评测" : "修复基准评测");
     setDescription("");
     setVersion(1);
     setBaselineRunId("");
@@ -205,7 +205,7 @@ export default function EvaluationDatasetsPage() {
   function switchTaskType(nextTaskType: "retrieval" | "fix") {
     setTaskType(nextTaskType);
     if (!selectedDataset) {
-      setName(nextTaskType === "retrieval" ? "Retrieval benchmark" : "Fix benchmark");
+      setName(nextTaskType === "retrieval" ? "检索基准评测" : "修复基准评测");
       setCasesJson(nextTaskType === "retrieval" ? DEFAULT_RETRIEVAL_CASES : DEFAULT_FIX_CASES);
       setBaselineRunId("");
     }
@@ -244,10 +244,10 @@ export default function EvaluationDatasetsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-medium uppercase text-slate-500">Evaluation Center</p>
-          <h1 className="mt-2 text-2xl font-semibold text-slate-950">Benchmark Datasets</h1>
+          <p className="text-sm font-medium uppercase text-slate-500">评测中心</p>
+          <h1 className="mt-2 text-2xl font-semibold text-slate-950">基准数据集</h1>
           <p className="mt-2 max-w-3xl text-sm text-slate-600">
-            Manage reusable retrieval and fix-agent benchmark cases with versions and metadata.
+            管理可复用的检索与代码修复基准用例、版本和元数据。
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -255,19 +255,19 @@ export default function EvaluationDatasetsPage() {
             href="/evaluations/datasets/snapshots"
             className="rounded-md border border-border px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
-            Snapshots
+            快照
           </Link>
           <Link
             href="/evaluations/history"
             className="rounded-md border border-border px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
-            History
+            历史记录
           </Link>
           <Link
             href="/evaluations"
             className="rounded-md border border-border px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
-            Evaluation Center
+            评测中心
           </Link>
         </div>
       </div>
@@ -287,7 +287,7 @@ export default function EvaluationDatasetsPage() {
                       : "text-slate-600 hover:bg-slate-50"
                   }`}
                 >
-                  {nextTaskType === "retrieval" ? "Retrieval" : "Fix Agent"}
+                  {nextTaskType === "retrieval" ? "检索" : "代码修复"}
                 </button>
               ))}
             </div>
@@ -296,14 +296,14 @@ export default function EvaluationDatasetsPage() {
               onClick={() => startNew(taskType)}
               className="rounded-md border border-border px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
-              New dataset
+              新建数据集
             </button>
           </div>
 
           <div className="mt-4 grid gap-4 sm:grid-cols-[minmax(0,1fr)_120px]">
             <div>
               <label htmlFor="dataset-name" className="text-sm font-medium text-slate-700">
-                Dataset name
+                数据集名称
               </label>
               <input
                 id="dataset-name"
@@ -314,7 +314,7 @@ export default function EvaluationDatasetsPage() {
             </div>
             <div>
               <label htmlFor="dataset-version" className="text-sm font-medium text-slate-700">
-                Version
+                版本
               </label>
               <input
                 id="dataset-version"
@@ -328,7 +328,7 @@ export default function EvaluationDatasetsPage() {
           </div>
 
           <label htmlFor="dataset-description" className="mt-4 block text-sm font-medium text-slate-700">
-            Description
+            说明
           </label>
           <textarea
             id="dataset-description"
@@ -338,11 +338,11 @@ export default function EvaluationDatasetsPage() {
           />
 
           <div className="mt-5 border-t border-border pt-4">
-            <h2 className="text-sm font-semibold text-slate-950">Regression gate policy</h2>
+            <h2 className="text-sm font-semibold text-slate-950">回归门禁策略</h2>
             <div className="mt-3 grid gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2">
                 <label htmlFor="baseline-run" className="text-sm font-medium text-slate-700">
-                  Baseline run
+                  基线运行
                 </label>
                 <select
                   id="baseline-run"
@@ -352,7 +352,7 @@ export default function EvaluationDatasetsPage() {
                   className="mt-2 min-h-10 w-full rounded-md border border-border bg-white px-3 text-sm outline-none focus:border-slate-500 disabled:bg-slate-100 disabled:text-slate-400"
                 >
                   <option value="">
-                    {selectedDataset ? "No baseline" : "Save dataset before choosing baseline"}
+                    {selectedDataset ? "无基线" : "请先保存数据集，再选择基线"}
                   </option>
                   {baselineOptions.map((run) => (
                     <option key={run.id} value={run.id}>
@@ -364,7 +364,7 @@ export default function EvaluationDatasetsPage() {
 
               <div>
                 <label htmlFor="primary-drop" className="text-sm font-medium text-slate-700">
-                  Max metric drop %
+                  最大指标降幅（%）
                 </label>
                 <input
                   id="primary-drop"
@@ -380,7 +380,7 @@ export default function EvaluationDatasetsPage() {
 
               <div>
                 <label htmlFor="regressed-cases" className="text-sm font-medium text-slate-700">
-                  Max regressed cases
+                  最多退化用例数
                 </label>
                 <input
                   id="regressed-cases"
@@ -394,7 +394,7 @@ export default function EvaluationDatasetsPage() {
 
               <div>
                 <label htmlFor="latency-increase" className="text-sm font-medium text-slate-700">
-                  Max latency increase sec
+                  最大耗时增量（秒）
                 </label>
                 <input
                   id="latency-increase"
@@ -410,7 +410,7 @@ export default function EvaluationDatasetsPage() {
 
               <div>
                 <label htmlFor="tool-call-increase" className="text-sm font-medium text-slate-700">
-                  Max tool call increase
+                  最大工具调用次数增量
                 </label>
                 <input
                   id="tool-call-increase"
@@ -431,7 +431,7 @@ export default function EvaluationDatasetsPage() {
                   onChange={(event) => setAllowIncompatible(event.target.checked)}
                   className="h-4 w-4 rounded border-border"
                 />
-                Allow incompatible comparisons
+                允许不兼容的对比
               </label>
               <label className="flex items-center gap-2 text-sm text-slate-700">
                 <input
@@ -440,13 +440,13 @@ export default function EvaluationDatasetsPage() {
                   onChange={(event) => setRequireMatchingDatasetSnapshot(event.target.checked)}
                   className="h-4 w-4 rounded border-border"
                 />
-                Require matching snapshots
+                要求快照一致
               </label>
             </div>
           </div>
 
           <label htmlFor="dataset-cases" className="mt-4 block text-sm font-medium text-slate-700">
-            Cases JSON
+            用例 JSON
           </label>
           <textarea
             id="dataset-cases"
@@ -457,7 +457,7 @@ export default function EvaluationDatasetsPage() {
           />
 
           <label htmlFor="dataset-metadata" className="mt-4 block text-sm font-medium text-slate-700">
-            Metadata JSON
+            元数据 JSON
           </label>
           <textarea
             id="dataset-metadata"
@@ -469,14 +469,14 @@ export default function EvaluationDatasetsPage() {
 
           <div className="mt-4 flex items-center justify-between gap-3">
             <p className="text-xs text-slate-500">
-              {selectedDataset ? `Editing ${selectedDataset.id}` : "Creating new dataset"}
+              {selectedDataset ? `正在编辑 ${selectedDataset.id}` : "新建数据集"}
             </p>
             <button
               type="submit"
               disabled={isSaving}
               className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
             >
-              {isSaving ? "Saving..." : selectedDataset ? "Save changes" : "Create dataset"}
+              {isSaving ? "正在保存…" : selectedDataset ? "保存修改" : "创建数据集"}
             </button>
           </div>
         </form>
@@ -491,22 +491,22 @@ export default function EvaluationDatasetsPage() {
 
           <section className="rounded-lg border border-border bg-white p-5">
             <div className="flex items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold text-slate-950">Datasets</h2>
+              <h2 className="text-lg font-semibold text-slate-950">数据集</h2>
               <select
                 value={filter}
                 onChange={(event) => setFilter(event.target.value as "all" | "retrieval" | "fix")}
                 className="min-h-9 rounded-md border border-border px-2 text-sm outline-none focus:border-slate-500"
               >
-                <option value="all">All</option>
-                <option value="retrieval">Retrieval</option>
-                <option value="fix">Fix</option>
+                <option value="all">全部</option>
+                <option value="retrieval">检索</option>
+                <option value="fix">修复</option>
               </select>
             </div>
 
             {isLoading ? (
-              <p className="mt-4 text-sm text-slate-500">Loading datasets...</p>
+              <p className="mt-4 text-sm text-slate-500">正在加载数据集…</p>
             ) : visibleDatasets.length === 0 ? (
-              <p className="mt-4 text-sm text-slate-500">No benchmark datasets yet.</p>
+              <p className="mt-4 text-sm text-slate-500">暂无基准数据集。</p>
             ) : (
               <div className="mt-4 space-y-2">
                 {visibleDatasets.map((dataset) => (
@@ -525,12 +525,12 @@ export default function EvaluationDatasetsPage() {
                     >
                       <span className="block font-medium text-slate-950">{dataset.name}</span>
                       <span className="mt-1 block text-xs text-slate-500">
-                        {dataset.task_type} · v{dataset.version} · {dataset.cases_json.length} cases
+                        {dataset.task_type} · v{dataset.version} · {dataset.cases_json.length} 个用例
                       </span>
                       <span className="mt-1 block text-xs text-slate-500">
                         {dataset.baseline_run_id
-                          ? `Baseline ${dataset.baseline_run_id.slice(0, 8)}`
-                          : "No regression gate baseline"}
+                          ? `基线 ${dataset.baseline_run_id.slice(0, 8)}`
+                          : "未设置回归门禁基线"}
                       </span>
                       {dataset.description ? (
                         <span className="mt-2 block text-xs text-slate-600">
@@ -545,20 +545,20 @@ export default function EvaluationDatasetsPage() {
                           href={`/evaluations/history?datasetId=${dataset.id}`}
                           className="font-medium text-slate-700 hover:text-slate-950"
                         >
-                          History
+                          历史记录
                         </Link>
                         <Link
                           href={`/evaluations/datasets/snapshots?datasetId=${dataset.id}`}
                           className="font-medium text-slate-700 hover:text-slate-950"
                         >
-                          Snapshots
+                          快照
                         </Link>
                         <button
                           type="button"
                           onClick={() => void handleDelete(dataset)}
                           className="font-medium text-red-600 hover:text-red-700"
                         >
-                          Delete
+                          删除
                         </button>
                       </div>
                     </div>
@@ -616,12 +616,12 @@ function parseCases(raw: string, taskType: "retrieval" | "fix"): Record<string, 
       : null;
 
   if (!cases || cases.length === 0) {
-    throw new Error(`Cases JSON must be an array or an object with ${taskType}[].`);
+    throw new Error(`用例 JSON 必须是数组，或包含以下字段的对象：${taskType}[].`);
   }
 
   return cases.map((item, index) => {
     if (!isRecord(item)) {
-      throw new Error(`Case ${index + 1} must be an object.`);
+      throw new Error(`用例 ${index + 1} 必须是对象。`);
     }
 
     if (taskType === "retrieval") {
@@ -637,7 +637,7 @@ function parseCases(raw: string, taskType: "retrieval" | "fix"): Record<string, 
         : rawExpectedStatus ?? "verified_success";
       if (!isFixExpectedStatus(expectedStatus)) {
         throw new Error(
-          `Case ${index + 1} expected_status must be a strict verification status.`
+          `用例 ${index + 1} 的 expected_status 必须是严格验证状态。`
         );
       }
       item.expected_status = expectedStatus;
@@ -650,14 +650,14 @@ function parseCases(raw: string, taskType: "retrieval" | "fix"): Record<string, 
 function parseMetadata(raw: string): Record<string, unknown> {
   const parsed = JSON.parse(raw) as unknown;
   if (!isRecord(parsed)) {
-    throw new Error("Metadata JSON must be an object.");
+    throw new Error("元数据 JSON 必须是对象。");
   }
   return parsed;
 }
 
 function requireString(item: Record<string, unknown>, key: string, index: number) {
   if (!stringValue(item[key])) {
-    throw new Error(`Case ${index + 1} requires ${key}.`);
+    throw new Error(`用例 ${index + 1} 必须包含 ${key}.`);
   }
 }
 

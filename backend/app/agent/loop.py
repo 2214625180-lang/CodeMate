@@ -27,7 +27,12 @@ from app.core.config import settings
 
 
 class LocalAgentExecutor:
-    """Deterministic policy boundary for model-selected repository actions."""
+    """Deterministic policy boundary for model-selected repository actions.
+
+    The planner is intentionally nondeterministic; authorization is not.  This
+    executor revalidates the structured action, enforces budgets and dispatches
+    only known tools, so model output never directly becomes local execution.
+    """
 
     def __init__(self, tools: AgentTools):
         self.tools = tools
@@ -44,6 +49,8 @@ class LocalAgentExecutor:
         return None
 
     def execute(self, state: FixAgentState, raw_action: dict[str, Any]) -> FixAgentState:
+        # Validate again at the execution boundary even though providers also
+        # parse this schema.  Defense in depth keeps alternate providers safe.
         try:
             action = PLAN_NEXT_ACTION_ADAPTER.validate_python(raw_action)
         except ValidationError as exc:
@@ -58,6 +65,8 @@ class LocalAgentExecutor:
             action.hypothesis,
             limit=20,
         )
+        # Finish and GeneratePatch are routing requests, not proof of success.
+        # Later deterministic nodes still apply the patch and verify tests.
         if isinstance(action, Finish):
             history = self._append_history(state, action, status="finished", observation=action.reason)
             return {
@@ -92,6 +101,8 @@ class LocalAgentExecutor:
         if budget_reason:
             return self._forced_finish(state, action, budget_reason, hypotheses)
 
+        # Fingerprints contain executable arguments only; changing explanatory
+        # prose cannot make an identical tool request consume more budget.
         fingerprint = action_fingerprint(action)
         prior_fingerprints = list(state.get("local_action_fingerprints") or [])
         if fingerprint in prior_fingerprints:
@@ -126,6 +137,8 @@ class LocalAgentExecutor:
         evidence = list(state.get("evidence") or [])
         evidence_fingerprints = list(state.get("evidence_fingerprints") or [])
         evidence_item, evidence_fingerprint, made_progress = self._build_evidence(action, result)
+        # Only a novel observation resets the no-progress counter. Repeating a
+        # different action that returns identical evidence is still no progress.
         if evidence_fingerprint not in evidence_fingerprints:
             evidence.append(evidence_item)
             evidence = evidence[-settings.agent_max_evidence_items :]
@@ -206,6 +219,8 @@ class LocalAgentExecutor:
                 depth=action.depth,
             )
         if isinstance(action, RunTests):
+            # Planner-selected tests are diagnostic evidence. They do not replace
+            # the fixed baseline/targeted/regression verification stages.
             return self.tools.run_tests(action.command, phase="diagnostic")
         raise RuntimeError(f"Unsupported local action: {type(action).__name__}")
 
@@ -224,6 +239,7 @@ class LocalAgentExecutor:
         try:
             deadline = datetime.fromisoformat(raw_deadline)
         except ValueError:
+            # A corrupt checkpoint must not silently remove the time budget.
             return True
         if deadline.tzinfo is None:
             deadline = deadline.replace(tzinfo=timezone.utc)

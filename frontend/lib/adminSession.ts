@@ -126,7 +126,7 @@ export function adminSessionState(cookieValue: string | undefined): AdminSession
       user: {
         provider: "local",
         login: "local-dev",
-        name: "Local Development",
+        name: "本地开发",
         avatarUrl: null
       }
     };
@@ -201,7 +201,7 @@ export function createAdminSessionValue(
   user: AdminUser = {
     provider: "password",
     login: "password-admin",
-    name: "Password Admin",
+    name: "密码登录管理员",
     avatarUrl: null
   },
   now = Date.now()
@@ -289,7 +289,7 @@ function parseLegacySession(value: string, now: number): AdminSession | null {
     user: {
       provider: "password",
       login: "password-admin",
-      name: "Password Admin",
+      name: "密码登录管理员",
       avatarUrl: null
     }
   };
@@ -312,7 +312,7 @@ function sessionSecret(): string {
   ) {
     return "codemate-local-dev";
   }
-  throw new Error("FRONTEND_ADMIN_SESSION_SECRET is required for protected authentication");
+  throw new Error("受保护的身份验证需要设置 FRONTEND_ADMIN_SESSION_SECRET");
 }
 
 function configuredSessionSecret(): string {
@@ -365,15 +365,15 @@ function misconfigurationDetail(
   hasSessionSecret: boolean
 ): string {
   if (hasBackendToken && !hasPassword && !hasGitHub) {
-    return "Configure GitHub OAuth or FRONTEND_ADMIN_PASSWORD when a CodeMate API token is set.";
+    return "设置 CodeMate API 令牌后，请配置 GitHub OAuth 或 FRONTEND_ADMIN_PASSWORD。";
   }
   if (hasGitHub && !hasRbacRules) {
-    return "Configure at least one CODEMATE_RBAC_* rule before enabling GitHub OAuth.";
+    return "启用 GitHub OAuth 前，请至少配置一条 CODEMATE_RBAC_* 规则。";
   }
   if (!hasSessionSecret) {
-    return "Configure FRONTEND_ADMIN_SESSION_SECRET before enabling protected authentication.";
+    return "启用受保护的身份验证前，请配置 FRONTEND_ADMIN_SESSION_SECRET。";
   }
-  return "Evaluation authentication is not configured correctly.";
+  return "评测身份验证配置不正确。";
 }
 
 function isRole(value: unknown): value is AdminRole {

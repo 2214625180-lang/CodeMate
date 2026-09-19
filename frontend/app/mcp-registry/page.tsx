@@ -30,7 +30,7 @@ export default function MCPRegistryPage() {
       setSelectedId((current) => current ?? data[0]?.id ?? null);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load MCP registry");
+      setError(err instanceof Error ? err.message : "加载 MCP 注册信息失败");
     }
   }, []);
 
@@ -44,7 +44,7 @@ export default function MCPRegistryPage() {
     }
     void listMCPRegistryRevisions(selectedId)
       .then(setRevisions)
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load revisions"));
+      .catch((err) => setError(err instanceof Error ? err.message : "加载配置版本失败"));
   }, [selectedId, servers]);
 
   async function perform(name: string, fn: () => Promise<unknown>, message: string) {
@@ -55,7 +55,7 @@ export default function MCPRegistryPage() {
       setNotice(message);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Registry operation failed");
+      setError(err instanceof Error ? err.message : "注册管理操作失败");
     } finally {
       setBusy(null);
     }
@@ -64,10 +64,10 @@ export default function MCPRegistryPage() {
   return (
     <div className="space-y-6">
       <header>
-        <p className="text-sm font-medium uppercase text-slate-500">MCP Control Plane</p>
-        <h1 className="mt-2 text-2xl font-semibold text-slate-950">Dynamic Server Registry</h1>
+        <p className="text-sm font-medium uppercase text-slate-500">MCP 控制平面</p>
+        <h1 className="mt-2 text-2xl font-semibold text-slate-950">动态服务注册</h1>
         <p className="mt-2 text-sm text-slate-600">
-          Hot-loaded Server configuration, encrypted credentials, validation snapshots and rollback.
+          支持服务配置热加载、凭据加密、验证快照和版本回滚。
         </p>
       </header>
       {error ? <Message tone="error">{error}</Message> : null}
@@ -81,13 +81,13 @@ export default function MCPRegistryPage() {
               const created = await createMCPRegistryServer(payload);
               setSelectedId(created.id);
             },
-            "Server registered; configuration is available without restart."
+            "服务已注册，配置无需重启即可生效。"
           )
         }
       />
       <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
         <section className="rounded-lg border border-border bg-white p-4">
-          <h2 className="font-semibold text-slate-950">Registered servers</h2>
+          <h2 className="font-semibold text-slate-950">已注册服务</h2>
           <div className="mt-3 space-y-2">
             {servers.map((server) => (
               <button
@@ -105,7 +105,7 @@ export default function MCPRegistryPage() {
                 <p className="mt-1 truncate text-xs text-slate-500">{server.url}</p>
               </button>
             ))}
-            {!servers.length ? <p className="text-sm text-slate-500">No dynamic servers.</p> : null}
+            {!servers.length ? <p className="text-sm text-slate-500">暂无动态服务。</p> : null}
           </div>
         </section>
         {selected ? (
@@ -129,7 +129,7 @@ export default function MCPRegistryPage() {
                 void perform(
                   `restore:${revision.id}`,
                   () => restoreMCPRegistryRevision(selected, revision.id),
-                  `Restored configuration version ${revision.version}.`
+                  `已恢复配置版本 ${revision.version}.`
                 )
               }
             />
@@ -169,25 +169,25 @@ function CreateServerForm({
         idempotency_mode: idempotencyMode
       });
     } catch {
-      window.alert("Tool policies must be valid JSON.");
+      window.alert("工具策略必须是有效的 JSON。");
     }
   }
 
   return (
     <form onSubmit={submit} className="rounded-lg border border-border bg-white p-5">
-      <h2 className="font-semibold text-slate-950">Register server</h2>
+      <h2 className="font-semibold text-slate-950">注册服务</h2>
       <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-5">
-        <Input label="Name" value={name} onChange={setName} placeholder="tracker" />
-        <Input label="HTTPS endpoint" value={url} onChange={setUrl} placeholder="https://mcp.example/mcp" />
-        <Input label="Allowed tools" value={tools} onChange={setTools} placeholder="search,update" />
-        <Input label="Policies JSON" value={policies} onChange={setPolicies} placeholder='{"search":"auto"}' />
-        <label className="text-sm text-slate-700">Idempotency
+        <Input label="名称" value={name} onChange={setName} placeholder="tracker" />
+        <Input label="HTTPS 接口地址" value={url} onChange={setUrl} placeholder="https://mcp.example/mcp" />
+        <Input label="允许的工具" value={tools} onChange={setTools} placeholder="search,update" />
+        <Input label="策略 JSON" value={policies} onChange={setPolicies} placeholder='{"search":"auto"}' />
+        <label className="text-sm text-slate-700">幂等机制
           <select value={idempotencyMode} onChange={(event) => setIdempotencyMode(event.target.value as "none" | "metadata")} className="mt-1 block w-full rounded-md border border-border px-3 py-2">
             <option value="none">none</option><option value="metadata">metadata</option>
           </select>
         </label>
       </div>
-      <button type="submit" disabled={disabled || !name || !url} className="mt-4 rounded-md bg-slate-950 px-3 py-2 text-sm font-medium text-white disabled:bg-slate-400">Register</button>
+      <button type="submit" disabled={disabled || !name || !url} className="mt-4 rounded-md bg-slate-950 px-3 py-2 text-sm font-medium text-white disabled:bg-slate-400">注册</button>
     </form>
   );
 }
@@ -198,21 +198,21 @@ function ServerDetails({ server, busy, onAction, onDeleted }: { server: MCPRegis
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div><h2 className="text-lg font-semibold text-slate-950">{server.name}</h2><p className="mt-1 text-sm text-slate-500">{server.url}</p></div>
         <div className="flex flex-wrap gap-2">
-          <Button disabled={busy !== null} onClick={() => onAction("toggle", () => updateMCPRegistryServer(server, { enabled: !server.enabled }), server.enabled ? "Server disabled." : "Server enabled.")}>{server.enabled ? "Disable" : "Enable"}</Button>
-          <Button disabled={busy !== null} onClick={() => onAction("validate", () => validateMCPRegistryServer(server.id), "Validation completed.")}>Validate</Button>
-          <Button disabled={busy !== null} onClick={() => onAction("delete", async () => { await deleteMCPRegistryServer(server); onDeleted(); }, "Server deleted.")}>Delete</Button>
+          <Button disabled={busy !== null} onClick={() => onAction("toggle", () => updateMCPRegistryServer(server, { enabled: !server.enabled }), server.enabled ? "服务已禁用。" : "服务已启用。")}>{server.enabled ? "禁用" : "启用"}</Button>
+          <Button disabled={busy !== null} onClick={() => onAction("validate", () => validateMCPRegistryServer(server.id), "验证已完成。")}>验证</Button>
+          <Button disabled={busy !== null} onClick={() => onAction("delete", async () => { await deleteMCPRegistryServer(server); onDeleted(); }, "服务已删除。")}>删除</Button>
         </div>
       </div>
       <div className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
-        <p>Status: <Status value={server.validation_status} /></p>
-        <p>Protocol: {server.protocol_version ?? "—"}</p>
-        <p>Version: {server.version}</p>
-        <p>Tools: {server.allowed_tools.join(", ") || "none"}</p>
-        <p>Idempotency: {server.idempotency_mode}</p>
-        <p>Updated by: {server.updated_by ?? "—"}</p>
+        <p>状态： <Status value={server.validation_status} /></p>
+        <p>协议： {server.protocol_version ?? "—"}</p>
+        <p>版本： {server.version}</p>
+        <p>工具： {server.allowed_tools.join(", ") || "none"}</p>
+        <p>幂等机制： {server.idempotency_mode}</p>
+        <p>更新者： {server.updated_by ?? "—"}</p>
       </div>
       {server.validation_error ? <p className="mt-3 rounded bg-red-50 p-3 text-sm text-red-700">{server.validation_error}</p> : null}
-      {server.tools_snapshot ? <details className="mt-4"><summary className="cursor-pointer text-sm font-medium">Capability and tool snapshot</summary><pre className="mt-2 max-h-72 overflow-auto rounded bg-panel p-3 text-xs">{JSON.stringify({ capabilities: server.capabilities, tools: server.tools_snapshot }, null, 2)}</pre></details> : null}
+      {server.tools_snapshot ? <details className="mt-4"><summary className="cursor-pointer text-sm font-medium">能力与工具快照</summary><pre className="mt-2 max-h-72 overflow-auto rounded bg-panel p-3 text-xs">{JSON.stringify({ capabilities: server.capabilities, tools: server.tools_snapshot }, null, 2)}</pre></details> : null}
     </section>
   );
 }
@@ -225,24 +225,24 @@ function CredentialPanel({ server, busy, onAction }: { server: MCPRegistryServer
   const [clientSecret, setClientSecret] = useState("");
   function save() {
     const payload = type === "bearer" ? { auth_type: type, token, expected_version: server.credential?.version } : { auth_type: type, token_url: tokenUrl, client_id: clientId, client_secret: clientSecret, scopes: [], expected_version: server.credential?.version };
-    onAction("credential", () => setMCPRegistryCredential(server.id, payload), "Credential encrypted and saved.");
+    onAction("credential", () => setMCPRegistryCredential(server.id, payload), "凭据已加密并保存。");
     setToken(""); setClientSecret("");
   }
   return (
     <section className="rounded-lg border border-border bg-white p-5">
-      <div className="flex items-center justify-between"><h2 className="font-semibold text-slate-950">Credential Broker</h2><span className="text-sm text-slate-500">{server.credential ? `${server.credential.auth_type} · ${server.credential.encryption_provider}` : "No credential"}</span></div>
-      <select value={type} onChange={(event) => setType(event.target.value as typeof type)} className="mt-4 rounded-md border border-border px-3 py-2 text-sm"><option value="bearer">Bearer token</option><option value="oauth2_client_credentials">OAuth2 client credentials</option></select>
+      <div className="flex items-center justify-between"><h2 className="font-semibold text-slate-950">凭据代理</h2><span className="text-sm text-slate-500">{server.credential ? `${server.credential.auth_type} · ${server.credential.encryption_provider}` : "无凭据"}</span></div>
+      <select value={type} onChange={(event) => setType(event.target.value as typeof type)} className="mt-4 rounded-md border border-border px-3 py-2 text-sm"><option value="bearer">Bearer 令牌</option><option value="oauth2_client_credentials">OAuth2 客户端凭据</option></select>
       <div className="mt-3 grid gap-3 md:grid-cols-3">
-        {type === "bearer" ? <Input label="New token" value={token} onChange={setToken} secret /> : <><Input label="Token URL" value={tokenUrl} onChange={setTokenUrl} /><Input label="Client ID" value={clientId} onChange={setClientId} /><Input label="Client secret" value={clientSecret} onChange={setClientSecret} secret /></>}
+        {type === "bearer" ? <Input label="新令牌" value={token} onChange={setToken} secret /> : <><Input label="令牌地址" value={tokenUrl} onChange={setTokenUrl} /><Input label="客户端 ID" value={clientId} onChange={setClientId} /><Input label="客户端密钥" value={clientSecret} onChange={setClientSecret} secret /></>}
       </div>
-      <div className="mt-3 flex gap-2"><Button disabled={busy !== null || (type === "bearer" ? !token : !tokenUrl || !clientId || !clientSecret)} onClick={save}>Save credential</Button>{server.credential ? <Button disabled={busy !== null} onClick={() => onAction("credential-delete", () => deleteMCPRegistryCredential(server.id), "Credential deleted.")}>Delete credential</Button> : null}</div>
-      <p className="mt-3 text-xs text-slate-500">Secrets use per-credential envelope encryption and are never returned by the API or browser proxy.{server.credential ? ` KMS key: ${server.credential.kms_key_id}` : ""}</p>
+      <div className="mt-3 flex gap-2"><Button disabled={busy !== null || (type === "bearer" ? !token : !tokenUrl || !clientId || !clientSecret)} onClick={save}>保存凭据</Button>{server.credential ? <Button disabled={busy !== null} onClick={() => onAction("credential-delete", () => deleteMCPRegistryCredential(server.id), "凭据已删除。")}>删除凭据</Button> : null}</div>
+      <p className="mt-3 text-xs text-slate-500">密钥采用独立的信封加密，API 和浏览器代理均不会返回密钥原文。{server.credential ? ` KMS 密钥：${server.credential.kms_key_id}` : ""}</p>
     </section>
   );
 }
 
 function RevisionPanel({ server, revisions, busy, onRestore }: { server: MCPRegistryServer; revisions: MCPRegistryRevision[]; busy: string | null; onRestore: (revision: MCPRegistryRevision) => void }) {
-  return <section className="rounded-lg border border-border bg-white p-5"><h2 className="font-semibold text-slate-950">Configuration history</h2><div className="mt-3 space-y-2">{revisions.map((revision) => <div key={revision.id} className="flex items-center justify-between rounded border border-border p-3 text-sm"><div><span className="font-medium">v{revision.version} · {revision.action}</span><p className="text-xs text-slate-500">{revision.actor} · {new Date(revision.created_at).toLocaleString()}</p></div><Button disabled={busy !== null || revision.version === server.version} onClick={() => onRestore(revision)}>Restore</Button></div>)}</div></section>;
+  return <section className="rounded-lg border border-border bg-white p-5"><h2 className="font-semibold text-slate-950">配置历史</h2><div className="mt-3 space-y-2">{revisions.map((revision) => <div key={revision.id} className="flex items-center justify-between rounded border border-border p-3 text-sm"><div><span className="font-medium">v{revision.version} · {revision.action}</span><p className="text-xs text-slate-500">{revision.actor} · {new Date(revision.created_at).toLocaleString()}</p></div><Button disabled={busy !== null || revision.version === server.version} onClick={() => onRestore(revision)}>恢复</Button></div>)}</div></section>;
 }
 
 function Input({ label, value, onChange, placeholder, secret = false }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; secret?: boolean }) { return <label className="text-sm text-slate-700">{label}<input type={secret ? "password" : "text"} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="mt-1 block w-full rounded-md border border-border px-3 py-2" /></label>; }

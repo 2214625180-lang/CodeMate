@@ -252,6 +252,8 @@ def create_fix_run(
             detail="Repository must be indexed before running the fix agent",
         )
 
+    # Commit the run before enqueueing it so a fast worker never observes a
+    # queue message whose database record is still inside the API transaction.
     try:
         run = AgentService(db).create_fix_run(
             repo_id=repo_id,
@@ -267,6 +269,9 @@ def create_fix_run(
     try:
         enqueue_agent_run(run.id)
     except RedisError:
+        # Do not leave a durable run permanently "pending" when Redis rejected
+        # the corresponding job. The client still receives the run ID and an
+        # explicit infrastructure verdict that can be inspected in the UI.
         now = datetime.now(timezone.utc)
         reason = "Failed to enqueue agent run."
         run.status = "infra_error"
