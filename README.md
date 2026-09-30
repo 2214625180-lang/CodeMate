@@ -110,29 +110,3 @@ npm --prefix frontend run build
 PYTHONDONTWRITEBYTECODE=1 PATH="$PWD/.venv/bin:$PATH" \
   .venv/bin/python scripts/benchmark_suite.py
 ```
-
-## 文档导航
-
-### 主产品
-
-- [代码阅读与 Agent 项目学习指南](docs/code-reading-and-agent-learning-guide.md)
-- [Demo 脚本：真实模型、多文件 fixture 与讲解顺序](docs/demo-script.md)
-- [受控 Agent Loop、工具契约与 Checkpoint](docs/controlled-agent-loop.md)
-- [技术难点与取舍](docs/technical-challenges-tradeoffs.md)
-- [Benchmark 结果、artifact 和未发布指标](benchmarks/results/README.md)
-- [CI Evaluation Gate](docs/ci-evaluation-gate.md)
-- [PRD：首期范围收缩理由](docs/CodeMate_PRD_v2_enhanced.md)
-
-### 配置与 Production Extensions
-
-Provider、Evaluation RBAC、service token、KMS、SIEM、MCP Registry/Quota 和托管沙箱不再挤占主产品叙事，统一见：
-
-- [开发配置与 Production Extensions](docs/development-and-production-extensions.md)
-- [MCP Registry 与 Credential Broker](docs/mcp-registry.md)
-- [MCP 租户授权、Quota 与审批](docs/mcp-tenancy.md)、[MCP Quotas](docs/mcp-quotas.md)、[MCP 审批](docs/mcp-approval-workflow.md)
-- [KMS、SIEM 与 staging qualification](docs/staging-qualification-kms-siem.md)
-- [托管 Firecracker/Kubernetes 沙箱执行平面](docs/managed-sandbox-execution-plane.md)
-
-## 简历表述
-
-> 设计并实现面向中小型 TypeScript/Python 仓库的可验证代码修复 Agent：模型根据观测动态选择代码检索与阅读工具，确定性执行器对 Schema、预算和补丁权限做约束；在隔离沙箱中先复现失败、再运行目标与回归测试，仅将完整证据链通过的任务记为 `verified_success`。实现持久化执行轨迹、checkpoint、可审查 Diff/Timeline 以及数据集快照和 CI regression gate，避免 Agent 质量静默退化。
